@@ -66,6 +66,10 @@ def _minutos(instante: datetime) -> int:
     return instante.hour * 60 + instante.minute + (1 if instante.second or instante.microsecond else 0)
 
 
+def _na_janela(instante: datetime) -> bool:
+    return JANELA_INICIO <= _minutos(instante) <= JANELA_FIM
+
+
 def validar_pedido(sala: str, inicio: str, fim: str) -> tuple[datetime, datetime]:
     """Regras da politica de uso, na ordem: sala, intervalo, janela, duracao."""
     if sala not in SALAS_POR_ID:
@@ -73,8 +77,7 @@ def validar_pedido(sala: str, inicio: str, fim: str) -> tuple[datetime, datetime
     ini, fi = _instante(inicio), _instante(fim)
     if fi <= ini:
         raise ToolError(ERRO_INTERVALO)
-    dentro = lambda m: JANELA_INICIO <= m <= JANELA_FIM  # noqa: E731
-    if ini.date() != fi.date() or not dentro(_minutos(ini)) or not dentro(_minutos(fi)):
+    if ini.date() != fi.date() or not _na_janela(ini) or not _na_janela(fi):
         raise ToolError(ERRO_JANELA)
     if fi - ini > DURACAO_MAXIMA:
         raise ToolError(ERRO_DURACAO)
@@ -290,6 +293,10 @@ class LogDeRequests:
             extra += f" name={params.get('name') or params.get('uri')}"
         if "requestState" in params:
             extra += " retry=sim"
+        capacidades = meta.get("io.modelcontextprotocol/clientCapabilities")
+        if isinstance(capacidades, dict):
+            elicitation = capacidades.get("elicitation")
+            extra += f" elicitation={'+'.join(sorted(elicitation)) or 'vazia' if isinstance(elicitation, dict) else 'nao'}"
         log(
             f"[mcp] method={msg.get('method')} id={msg.get('id')}{extra} "
             f"traceparent={meta.get('traceparent', '-')}"
