@@ -1,23 +1,23 @@
-# Funcoes de apoio para os testes manuais. Uso: source ./testes.sh
-# Dependem so de curl e python3 (o mesmo python3 do validador), sem jq.
+# Helper functions for the manual tests. Usage: source ./testes.sh
+# They only need curl and python3 (the same python3 as the validator), no jq.
 
 AGENTE=${AGENTE:-http://localhost:7300}
 MCP=${MCP:-http://localhost:7301}
 TP=${TP:-00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01}
 WIRE=${WIRE:-exemplos/wire}
 
-# corpo ARQUIVO [caminho=valor ...]
-#   Imprime request.body de exemplos/wire/ARQUIVO, com campos trocados.
-#   caminho usa pontos (params.message.taskId); depois de params._meta. o resto e uma chave so
-#   (params._meta.io.modelcontextprotocol/protocolVersion). valor e JSON, ou texto se nao for JSON.
-#   caminho=- remove o campo.
+# corpo FILE [path=value ...]
+#   Prints request.body of exemplos/wire/FILE, with fields replaced.
+#   path uses dots (params.message.taskId); after params._meta. the rest is a single key
+#   (params._meta.io.modelcontextprotocol/protocolVersion). value is JSON, or plain text if not JSON.
+#   path=- removes the field.
 corpo() {
   python3 - "$WIRE/$1" "${@:2}" <<'PY'
 import json, sys
 corpo = json.load(open(sys.argv[1]))["request"]["body"]
 for troca in sys.argv[2:]:
     caminho, _, valor = troca.partition("=")
-    if caminho.startswith("params._meta."):  # chaves do _meta tem pontos no nome
+    if caminho.startswith("params._meta."):  # _meta keys contain dots
         pais, folha = ["params", "_meta"], caminho[len("params._meta."):]
     else:
         *pais, folha = caminho.split(".")
@@ -35,7 +35,7 @@ print(json.dumps(corpo))
 PY
 }
 
-# mcp_post CORPO  -> POST no servidor MCP com os headers espelhados do corpo; imprime JSON e o status HTTP
+# mcp_post BODY  -> POST to the MCP server with headers mirrored from the body; prints the JSON and the HTTP status
 mcp_post() {
   local metodo nome
   metodo=$(printf '%s' "$1" | pegar method)
@@ -46,12 +46,12 @@ mcp_post() {
     -d "$1"
 }
 
-# a2a_post CORPO  -> POST JSON-RPC no agente, com o header traceparent de $TP
+# a2a_post BODY  -> JSON-RPC POST to the agent, with the traceparent header from $TP
 a2a_post() {
   curl -s "$AGENTE/a2a" -H 'Content-Type: application/json' -H "traceparent: $TP" -d "$1"
 }
 
-# a2a_enviar TEXTO [TASK_ID]  -> SendMessage com o texto dado (e a Task, se for continuacao)
+# a2a_enviar TEXT [TASK_ID]  -> SendMessage with the given text (and the Task, when continuing one)
 a2a_enviar() {
   local msg
   msg=$(python3 -c 'import json,sys,secrets
@@ -66,7 +66,7 @@ a2a_get() {
   a2a_post "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"GetTask\",\"params\":{\"id\":\"$1\"}}"
 }
 
-# pegar CAMINHO  -> le JSON da entrada (ignora a linha "HTTP nnn") e imprime o valor no caminho com pontos
+# pegar PATH  -> reads JSON from stdin (ignoring the "HTTP nnn" line) and prints the value at the dotted path
 pegar() {
   python3 -c 'import json,sys
 texto=sys.stdin.read().split("\nHTTP ")[0]
@@ -76,7 +76,7 @@ for k in sys.argv[1].split("."):
 print(d if isinstance(d,str) else json.dumps(d, ensure_ascii=False))' "$1"
 }
 
-# resumo_task  -> mostra id, estado, mensagem de status e artifact de uma resposta A2A
+# resumo_task  -> shows the id, state, status message and artifact of an A2A response
 resumo_task() {
   python3 -c 'import json,sys
 r=json.load(sys.stdin)

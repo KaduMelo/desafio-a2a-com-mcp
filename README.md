@@ -1,26 +1,26 @@
-# A Ponte: um agente A2A com MCP por dentro
+# A Ponte: an A2A agent with MCP inside
 
-Entrega do desafio "A Ponte" (Hill Valley Tech, cinco salas de reunião). São dois processos Python separados:
+Submission for the "A Ponte" ("The Bridge") challenge (Hill Valley Tech, five meeting rooms). It consists of two separate Python processes:
 
-| Processo | Pasta | Porta | Endpoint | Papel |
+| Process | Folder | Port | Endpoint | Role |
 |---|---|---|---|---|
-| Servidor MCP `central-de-salas` | [servidor-mcp/](servidor-mcp/) | 7301 | `POST /mcp` (Streamable HTTP, revisão 2026-07-28, stateless) | 3 tools, 1 resource, MRTR na reserva |
-| Agente `Central de Salas` | [agente/](agente/) | 7300 | `POST /a2a` (A2A v1.0, JSON-RPC 2.0) e `GET /.well-known/agent-card.json` | Host MCP por dentro, servidor A2A por fora |
+| MCP server `central-de-salas` | [servidor-mcp/](servidor-mcp/) | 7301 | `POST /mcp` (Streamable HTTP, revision 2026-07-28, stateless) | 3 tools, 1 resource, MRTR on booking |
+| Agent `Central de Salas` | [agente/](agente/) | 7300 | `POST /a2a` (A2A v1.0, JSON-RPC 2.0) and `GET /.well-known/agent-card.json` | MCP host on the inside, A2A server on the outside |
 
-Stack: Python 3.12 com [uv](https://docs.astral.sh/uv/), SDK oficial `mcp==2.3.0` (v2, alinhado à revisão 2026-07-28), `starlette==1.8.0` e `uvicorn==0.54.0`. As versões estão travadas em cada `pyproject.toml` e nos `uv.lock` commitados. O agente não usa LLM e decide por regra.
+Stack: Python 3.12 with [uv](https://docs.astral.sh/uv/), the official `mcp==2.3.0` SDK (v2, aligned with revision 2026-07-28), `starlette==1.8.0` and `uvicorn==0.54.0`. Versions are pinned in each `pyproject.toml` and in the committed `uv.lock` files. The agent uses no LLM and decides by rule.
 
-O roteiro de testes manuais, passo a passo e com a saída esperada, está em [TESTES-MANUAIS.md](TESTES-MANUAIS.md).
+The manual test walkthrough, step by step and with the expected output, is in [TESTES-MANUAIS.md](TESTES-MANUAIS.md).
 
-## Como rodar
+## How to run (Como rodar)
 
-Pré-requisitos: `git`, `python3` (3.10 ou superior, para o validador) e `uv` (instalação: `curl -LsSf https://astral.sh/uv/install.sh | sh`). O `uv` baixa o Python 3.12 dos projetos se ele não estiver instalado.
+Prerequisites: `git`, `python3` (3.10 or later, for the validator) and `uv` (install with `curl -LsSf https://astral.sh/uv/install.sh | sh`). `uv` downloads the projects' Python 3.12 if it is not installed.
 
 ```bash
 git clone https://github.com/KaduMelo/desafio-a2a-com-mcp.git
 cd desafio-a2a-com-mcp
 ```
 
-**Terminal 1, servidor MCP.** Precisa de `REQUEST_STATE_SECRET` com pelo menos 32 bytes de aleatoriedade. Gere a sua e não commite o valor:
+**Terminal 1, MCP server.** It needs `REQUEST_STATE_SECRET` with at least 32 bytes of randomness. Generate your own and never commit the value:
 
 ```bash
 export REQUEST_STATE_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
@@ -28,80 +28,82 @@ cd servidor-mcp
 uv run python servidor.py
 ```
 
-Sem o segredo, ou com menos de 32 bytes, o processo se recusa a subir e mostra o comando acima. Para testar o retry depois de um restart, reinicie o servidor no mesmo terminal, com o mesmo `REQUEST_STATE_SECRET` exportado: um `requestState` selado com outra chave é rejeitado.
+Without the secret, or with fewer than 32 bytes, the process refuses to start and prints the command above. To test a retry after a restart, restart the server in the same terminal with the same `REQUEST_STATE_SECRET` exported: a `requestState` sealed with a different key is rejected.
 
-**Terminal 2, agente:**
+**Terminal 2, agent:**
 
 ```bash
 cd agente
 uv run python agente.py
 ```
 
-**Terminal 3, validador** (na raiz do repositório, com os dois processos recém-iniciados):
+**Terminal 3, validator** (from the repository root, with both processes freshly started):
 
 ```bash
 python3 validador/validar.py --agente http://localhost:7300 --mcp http://localhost:7301
 ```
 
-O stderr do servidor MCP (terminal 1) registra uma linha por request, com método, id, nome da tool ou do resource e traceparent. O retry de uma reserva pausada aparece marcado com `retry=sim` e tem id diferente do request inicial:
+The MCP server's stderr (terminal 1) logs one line per request, with the method, id, tool or resource name, the elicitation capability the client declared, and the traceparent. The retry of a paused booking is tagged `retry=sim` and has a different id from the initial request:
 
 ```
-[mcp] method=tools/list id=1 traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-b6ab53c7be477614-01
-[mcp] method=resources/read id=2 name=politica://uso traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-9d3b1c6b0b438e04-01
-[mcp] method=tools/call id=3 name=reservar_sala traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-a4dc65fe37a23e91-01
-[mcp] method=tools/call id=4 name=reservar_sala retry=sim traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-d86bee743d8e8948-01
+[mcp] method=tools/list id=1 elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4c2b7e4dcdc2c617-01
+[mcp] method=resources/read id=2 name=politica://uso elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-f362f91e9ad01d95-01
+[mcp] method=tools/call id=3 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-3f3a4c23856c99c9-01
+...
+[mcp] method=tools/call id=12 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-ad8d6af9c2f5232a-01
+[mcp] method=tools/call id=13 name=reservar_sala retry=sim elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4eb10c9a0e92acb6-01
 ```
 
-O stderr do agente (terminal 2) registra cada request A2A e cada transição de estado das Tasks.
+The agent's stderr (terminal 2) logs every A2A request and every Task state transition.
 
-Variáveis de ambiente opcionais, com os padrões do enunciado:
+Optional environment variables, with the defaults required by the challenge:
 
-| Variável | Padrão | Processo |
+| Variable | Default | Process |
 |---|---|---|
-| `MCP_HOST` / `MCP_PORT` | `127.0.0.1` / `7301` | servidor MCP |
-| `AGENTE_HOST` / `AGENTE_PORT` | `127.0.0.1` / `7300` | agente |
-| `AGENTE_URL` | `http://127.0.0.1:7300` | URL pública publicada no Agent Card |
-| `MCP_URL` | `http://127.0.0.1:7301/mcp` | servidor MCP que o agente consome |
+| `MCP_HOST` / `MCP_PORT` | `127.0.0.1` / `7301` | MCP server |
+| `AGENTE_HOST` / `AGENTE_PORT` | `127.0.0.1` / `7300` | agent |
+| `AGENTE_URL` | `http://127.0.0.1:7300` | public URL published in the Agent Card |
+| `MCP_URL` | `http://127.0.0.1:7301/mcp` | MCP server the agent consumes |
 
-## Onde a ponte acontece
+## Where the bridge happens (Onde a ponte acontece)
 
-A ponte inteira fica em [agente/agente.py](agente/agente.py), em dois pontos marcados com o comentário `PONTE`.
+The whole bridge lives in [agente/agente.py](agente/agente.py), at two points marked with a `PONTE` comment.
 
-**Ida, do `input_required` à pausa.** Em [agente/agente.py:184-192](agente/agente.py#L184-L192), `concluir_com` recebe o resultado do `tools/call`. Quando ele é um `InputRequiredResult`, `pergunta_de` ([agente/host_mcp.py:125](agente/host_mcp.py#L125)) extrai a chave do `inputRequests`, o campo e o `enum` da elicitation em form mode. A Task guarda em `task.pausa` a tool, os argumentos, essa chave e o `requestState` sem abri-lo, e vai para `TASK_STATE_INPUT_REQUIRED` com a mensagem `alternativas: <ids>`, na ordem do enum. O `requestState` chega cru porque o host MCP chama `session.call_tool(..., allow_input_required=True)` ([agente/host_mcp.py:121](agente/host_mcp.py#L121)) e não registra callback de elicitation, então o SDK não fecha o ciclo sozinho.
+**Outbound, from `input_required` to the pause.** In [agente/agente.py:184-192](agente/agente.py#L184-L192), `concluir_com` receives the `tools/call` result. When it is an `InputRequiredResult`, `pergunta_de` ([agente/host_mcp.py:125](agente/host_mcp.py#L125)) extracts the `inputRequests` key, the field name and the `enum` of the form-mode elicitation. The Task stores the tool, the arguments, that key and the `requestState` in `task.pausa` without opening it, and moves to `TASK_STATE_INPUT_REQUIRED` with the message `alternativas: <ids>`, in enum order. The `requestState` arrives raw because the MCP host calls `session.call_tool(..., allow_input_required=True)` ([agente/host_mcp.py:121](agente/host_mcp.py#L121)) and registers no elicitation callback, so the SDK never closes the loop on its own.
 
-**Volta, do `escolha=` ao retry.** Em [agente/agente.py:241-263](agente/agente.py#L241-L263), `retomar` traduz `escolha=<id>` em `action: accept` e `escolha=recusar` em `action: decline`. Uma escolha fora do enum mantém a Task pausada e repete a lista. Depois disso, o agente reemite o mesmo `tools/call`, levando `inputResponses` com a mesma chave recebida e o `requestState` ecoado byte a byte. O SDK gera um id JSON-RPC novo em cada chamada, o que dá ids diferentes para o pedido inicial e o retry, como mostra o log acima. O resultado volta para `concluir_com`, que leva a Task a `COMPLETED` (com o artifact `reserva`), `CANCELED` (recusa) ou `FAILED` (`isError` ou erro de protocolo).
+**Return, from `escolha=` to the retry.** In [agente/agente.py:241-263](agente/agente.py#L241-L263), `retomar` translates `escolha=<id>` into `action: accept` and `escolha=recusar` into `action: decline`. A choice outside the enum keeps the Task paused and repeats the list. The agent then reissues the same `tools/call`, carrying `inputResponses` under the same key it received and the `requestState` echoed byte for byte. The SDK mints a new JSON-RPC id for every call, so the initial request and the retry have different ids, as the log above shows. The result goes back to `concluir_com`, which moves the Task to `COMPLETED` (with the `reserva` artifact), `CANCELED` (declined) or `FAILED` (`isError` or a protocol error).
 
-Do lado do servidor, o par da ponte é o resolver `escolha_de_sala` ([servidor-mcp/servidor.py:200](servidor-mcp/servidor.py#L200)), ligado ao parâmetro `escolha` de `reservar_sala` por `Annotated[..., Resolve(escolha_de_sala)]`. Quando a sala está ocupada, ele devolve um `Elicit` com o schema `{sala: enum[alternativas]}`. A partir daí, o SDK cuida do resto: responde `resultType: input_required`, sela o `requestState`, recusa com -32021 o cliente sem `elicitation.form` e, no retry, valida o estado e injeta a resposta. Não há canal de volta nem chamada aberta esperando o usuário.
+On the server side, the bridge's counterpart is the `escolha_de_sala` resolver ([servidor-mcp/servidor.py:200](servidor-mcp/servidor.py#L200)), bound to the `escolha` parameter of `reservar_sala` through `Annotated[..., Resolve(escolha_de_sala)]`. When the room is taken, it returns an `Elicit` with the schema `{sala: enum[alternatives]}`. From there the SDK does the rest: it answers `resultType: input_required`, seals the `requestState`, rejects with -32021 any client without `elicitation.form` and, on the retry, verifies the state and injects the answer. There is no back channel and no open call waiting for the user.
 
-## Decisões técnicas
+## Technical decisions (Decisões técnicas)
 
-**Proteção do `requestState`.** Uso o utilitário do SDK, `RequestStateSecurity(keys=[REQUEST_STATE_SECRET], ttl=600)` ([servidor-mcp/servidor.py:184](servidor-mcp/servidor.py#L184)), instalado pelo `MCPServer` como middleware de fronteira. Ele faz o seguinte:
+**`requestState` protection.** I use the SDK's own utility, `RequestStateSecurity(keys=[REQUEST_STATE_SECRET], ttl=600)` ([servidor-mcp/servidor.py:184](servidor-mcp/servidor.py#L184)), which `MCPServer` installs as boundary middleware. It works like this:
 
-- O token é AES-256-GCM (AEAD) com chave derivada por HKDF-SHA256 do segredo, no formato `v1.<base64url>`. Ele é cifrado e autenticado, então trocar qualquer caractere quebra a tag GCM.
-- O envelope selado carrega `iat` e `exp`, o método, o nome da tool, um digest SHA-256 dos argumentos originais e a audiência `central-de-salas`.
-- A verificação recusa token adulterado, expirado, emitido para outra tool, com argumentos divergentes ou de outra audiência, sempre com `-32602 Invalid or expired requestState` e HTTP 400. O motivo real vai só para o log.
-- Argumentos adulterados no retry caem no caminho "o servidor rejeita o estado".
-- O segredo vem só da variável de ambiente. O processo não sobe sem ela, e o SDK exige pelo menos 32 bytes.
+- The token is AES-256-GCM (AEAD) with a key derived from the secret via HKDF-SHA256, in the format `v1.<base64url>`. It is both encrypted and authenticated, so changing any character breaks the GCM tag.
+- The sealed envelope carries `iat` and `exp`, the method, the tool name, a SHA-256 digest of the original arguments, and the audience `central-de-salas`.
+- Verification rejects a token that was tampered with, has expired, was minted for another tool, comes with different arguments, or belongs to another audience, always with `-32602 Invalid or expired requestState` and HTTP 400. The real reason goes only to the log.
+- Tampered arguments on the retry therefore take the "server rejects the state" path.
+- The secret comes only from the environment variable. The process will not start without it, and the SDK requires at least 32 bytes.
 
-**Validade.** São 10 minutos (`VALIDADE_REQUEST_STATE = 10 * 60`), dentro da faixa de 5 a 30 pedida no enunciado. Testei com uma instância do servidor com o relógio do verificador adiantado 11 minutos: o mesmo token foi rejeitado com -32602, e o log registrou `requestState rejected on tools/call: expired`. Com o relógio normal, o retry concluiu.
+**Lifetime.** 10 minutes (`VALIDADE_REQUEST_STATE = 10 * 60`), within the 5 to 30 minute range the challenge asks for. I tested it with a server instance whose verifier clock was moved 11 minutes ahead: the same token was rejected with -32602, and the log recorded `requestState rejected on tools/call: expired`. With the normal clock, the retry completed.
 
-**Nada guardado entre os rounds.** O servidor não mantém estado entre o `input_required` e o retry. No retry, o resolver roda de novo a partir dos argumentos, e o SDK só aceita a resposta se a pergunta renderizada for idêntica à que foi selada no estado (o digest da pergunta viaja no `requestState`). Como a chave vem do ambiente, um retry depois de reiniciar o processo funciona. As reservas ficam em memória e não sobrevivem ao restart, como o enunciado permite.
+**Nothing kept between rounds.** The server holds no state between the `input_required` and the retry. On the retry, the resolver runs again from the arguments, and the SDK accepts the answer only if the rendered question is identical to the one sealed in the state (the question digest travels inside the `requestState`). Since the key comes from the environment, a retry after restarting the process works. Bookings live in memory and do not survive a restart, as the challenge allows.
 
-**Estado das Tasks.** Fica em memória no processo do agente, no dicionário `TASKS` de [agente/agente.py](agente/agente.py), com um `asyncio.Lock` por Task. O estado pausado (`Pausa`: tool, argumentos, chave, campo, alternativas e `requestState`) é por Task, e por isso duas Tasks pausadas ao mesmo tempo não trocam de estado. `Task.para_json()` nunca serializa a `Pausa`, então o `requestState` não aparece no card, no artifact, no histórico nem nas mensagens. Estados terminais (`COMPLETED`, `CANCELED`, `FAILED`, `REJECTED`) são definitivos: um `SendMessage` para uma Task terminal recebe o erro `-32004` (UnsupportedOperation), e uma Task inexistente recebe `-32001` (TaskNotFound).
+**Task state.** It lives in memory in the agent process, in the `TASKS` dictionary in [agente/agente.py](agente/agente.py), with one `asyncio.Lock` per Task. The paused state (`Pausa`: tool, arguments, key, field, alternatives and `requestState`) is per Task, which is why two Tasks paused at the same time never swap state. `Task.para_json()` never serializes the `Pausa`, so the `requestState` never shows up in the card, the artifact, the history or any message. Terminal states (`COMPLETED`, `CANCELED`, `FAILED`, `REJECTED`) are final: a `SendMessage` to a terminal Task gets error `-32004` (UnsupportedOperation), and an unknown Task gets `-32001` (TaskNotFound).
 
-**Host MCP.** O agente mantém um único `mcp.Client` vivo, com a versão fixada em `2026-07-28`, e por isso não faz `initialize` nem `server/discover`. Todo request carrega no próprio `_meta` a versão, o `clientInfo` e as capabilities, e o SDK espelha `MCP-Protocol-Version`, `Mcp-Method` e `Mcp-Name` nos headers. Em cada Task, o agente:
+**MCP host.** The agent keeps a single long-lived `mcp.Client`, pinned to version `2026-07-28`, so it never sends `initialize` or `server/discover`. Every request carries the version, the `clientInfo` and the capabilities in its own `_meta`, and the SDK mirrors `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` into the headers. For each Task, the agent:
 
-1. faz `tools/list` e monta os argumentos a partir do `inputSchema` descoberto, sem lista fixa;
-2. lê `politica://uso` e extrai a `versao` da primeira linha, que vai no artifact;
-3. chama `reservar_sala`.
+1. calls `tools/list` and builds the arguments from the discovered `inputSchema`, with no hardcoded list;
+2. reads `politica://uso` and extracts the `versao` from its first line, which goes into the artifact;
+3. calls `reservar_sala`.
 
-O trace-id do header `traceparent` do cliente A2A é propagado no `_meta.traceparent` de todos os requests MCP da Task, com span-id novo em cada um. Sem o header, o agente gera um trace-id por Task.
+The trace-id from the A2A client's `traceparent` header is propagated in `_meta.traceparent` on every MCP request of that Task, with a new span-id on each one. Without the header, the agent generates one trace-id per Task.
 
-**A2A sem SDK de A2A.** O binding JSON-RPC (`SendMessage`, `GetTask`) e o Agent Card foram escritos à mão sobre Starlette, seguindo `exemplos/wire/07` a `10`, porque o binding é pequeno e assim o formato fica exatamente o do contrato. Um pedido fora do formato fixo termina em `TASK_STATE_REJECTED`.
+**A2A without an A2A SDK.** The JSON-RPC binding (`SendMessage`, `GetTask`) and the Agent Card are hand-written on Starlette, following `exemplos/wire/07` to `10`, because the binding is small and this keeps the wire format exactly as the contract shows. A request outside the fixed format ends in `TASK_STATE_REJECTED`.
 
-**Limitações do SDK, documentadas em vez de contornadas:**
+**SDK limitations, documented instead of worked around:**
 
-- **Capability de elicitation.** O `ClientSession` do SDK só anuncia elicitation quando recebe um `elicitation_callback`. Nesse caso anuncia `form` e `url` juntos e passa a responder as perguntas sozinho (`mcp/client/session.py`, `_build_capabilities`):
+- **Elicitation capability.** The SDK's `ClientSession` only advertises elicitation when it is given an `elicitation_callback`. In that case it advertises `form` and `url` together and starts answering the questions by itself (`mcp/client/session.py`, `_build_capabilities`):
   ```python
   elicitation = (
       types.ElicitationCapability(form=types.FormElicitationCapability(), url=types.UrlElicitationCapability())
@@ -109,13 +111,13 @@ O trace-id do header `traceparent` do cliente A2A é propagado no `_meta.tracepa
       else None
   )
   ```
-  Para declarar exatamente `{"elicitation": {"form": {}}}` sem callback, o agente usa uma subclasse da sessão que sobrescreve só `_build_capabilities` ([agente/host_mcp.py:29](agente/host_mcp.py#L29)). O resto do protocolo continua sendo o do SDK.
-- **Tool inexistente.** O `MCPServer` do SDK recusa a chamada com `isError: true` (`Unknown tool: ...`) em vez de -32602, forma que o enunciado aceita.
-- **Chave do `inputRequests`.** O SDK gera a chave a partir de `módulo:qualname` do resolver. Como o servidor roda como script, ela fica `__main__:escolha_de_sala`, igual à de `exemplos/wire/03`.
+  To declare exactly `{"elicitation": {"form": {}}}` without a callback, the agent uses a session subclass that overrides only `_build_capabilities` ([agente/host_mcp.py:29](agente/host_mcp.py#L29)). The rest of the protocol is still the SDK's.
+- **Unknown tool.** The SDK's `MCPServer` rejects the call with `isError: true` (`Unknown tool: ...`) instead of -32602, a form the challenge accepts.
+- **`inputRequests` key.** The SDK derives the key from the resolver's `module:qualname`. Since the server runs as a script, it becomes `__main__:escolha_de_sala`, the same as in `exemplos/wire/03`.
 
-## Saída do validador
+## Validator output (Saída do validador)
 
-Última execução, num clone limpo do fork (`git clone` seguido só dos comandos de [Como rodar](#como-rodar)), com os dois processos recém-iniciados:
+Last run, from a clean clone of the fork (`git clone` followed only by the commands in [How to run](#how-to-run-como-rodar)), with both processes freshly started:
 
 ```
 trace-id desta execucao: 6efb5b9a5a5dfcc9296c8c813a392219
@@ -161,5 +163,5 @@ PASS 36 o agente e deterministico: o mesmo pedido produz a mesma pausa
 
 resumo: 36 passaram, 0 falharam, de 36 verificacoes
 
-(codigo de saida: 0)
+(exit code: 0)
 ```

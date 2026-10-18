@@ -1,46 +1,48 @@
-# Testes manuais, marco a marco
+# Manual tests, milestone by milestone
 
-Roteiro para reproduzir cada marco da entrega com `curl`. O processamento de JSON usa `python3`; não precisa de `jq`. As funções de apoio ficam em [testes.sh](testes.sh) e são só atalhos finos sobre `curl`:
+A walkthrough to reproduce each milestone of the submission with `curl`. JSON processing uses `python3`; `jq` is not needed. The helper functions live in [testes.sh](testes.sh) and are thin shortcuts over `curl`:
 
-| Função | O que faz |
+| Function | What it does |
 |---|---|
-| `corpo ARQ [caminho=valor ...]` | imprime o `request.body` de `exemplos/wire/ARQ`, com campos trocados (`caminho=-` remove) |
-| `mcp_post CORPO` | `POST /mcp` com `MCP-Protocol-Version`, `Mcp-Method` e `Mcp-Name` espelhados do corpo, e imprime `HTTP nnn` no fim |
-| `a2a_post CORPO` / `a2a_enviar TEXTO [TASK]` / `a2a_get TASK` | JSON-RPC A2A no agente, com `traceparent: $TP` |
-| `pegar CAMINHO` | extrai um campo do JSON (`result.task.id`) |
-| `resumo_task` | mostra id, estado, mensagem e artifact de uma resposta A2A |
+| `corpo FILE [path=value ...]` | prints the `request.body` of `exemplos/wire/FILE`, with fields replaced (`path=-` removes one) |
+| `mcp_post BODY` | `POST /mcp` with `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` mirrored from the body, then prints `HTTP nnn` |
+| `a2a_post BODY` / `a2a_enviar TEXT [TASK]` / `a2a_get TASK` | A2A JSON-RPC calls to the agent, with `traceparent: $TP` |
+| `pegar PATH` | extracts one field from the JSON (`result.task.id`) |
+| `resumo_task` | shows the id, state, status message and artifact of an A2A response |
 
-O trace-id usado nos exemplos é o de `exemplos/wire`: `4bf92f3577b34da6a3ce929d0e0e4736`. Os ids de Task, contexto e mensagem e os requestStates mudam a cada execução; o resto das saídas deve sair igual.
+The trace-id used in the examples is the one from `exemplos/wire`: `4bf92f3577b34da6a3ce929d0e0e4736`. Task, context and message ids and the requestStates change on every run; everything else should come out the same.
 
-## 0. Preparação
+The servers' messages and the A2A texts (`alternativas: ...`, `escolha=...`, `Sala inexistente: ...`) stay in Portuguese, because the challenge fixes them byte for byte.
 
-Três terminais, todos na raiz do repositório.
+## 0. Setup
+
+Three terminals, all at the repository root.
 
 ```bash
-# terminal 1: servidor MCP (deixe o stderr visivel)
+# terminal 1: MCP server (keep its stderr visible)
 export REQUEST_STATE_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 cd servidor-mcp && uv run python servidor.py
 ```
 
 ```bash
-# terminal 2: agente
+# terminal 2: agent
 cd agente && uv run python agente.py
 ```
 
 ```bash
-# terminal 3: testes
+# terminal 3: tests
 source ./testes.sh
 ```
 
-As reservas ficam em memória. Cada seção abaixo diz quando reiniciar os processos (Ctrl+C e o mesmo comando de novo, no mesmo terminal) para que as saídas batam com as mostradas aqui. Reinicie o servidor MCP **no terminal 1**, onde o `REQUEST_STATE_SECRET` já está exportado.
+Bookings live in memory. Each section below says when to restart the processes (Ctrl+C and the same command again, in the same terminal) so the outputs match the ones shown here. Restart the MCP server **in terminal 1**, where `REQUEST_STATE_SECRET` is already exported.
 
 ---
 
-## 1. Servidor MCP básico
+## 1. Basic MCP server
 
-Com o servidor MCP recém-iniciado.
+With the MCP server freshly started.
 
-**1.1 `tools/list` traz as três tools**
+**1.1 `tools/list` returns the three tools**
 
 ```bash
 mcp_post "$(corpo 01-tools-list.json)" | python3 -c 'import json,sys; t=sys.stdin.read().split("\nHTTP "); print([x["name"] for x in json.loads(t[0])["result"]["tools"]], "HTTP", t[1].strip())'
@@ -48,9 +50,9 @@ mcp_post "$(corpo 01-tools-list.json)" | python3 -c 'import json,sys; t=sys.stdi
 ```
 ['listar_salas', 'consultar_disponibilidade', 'reservar_sala'] HTTP 200
 ```
-Rode `mcp_post "$(corpo 01-tools-list.json)"` sem o filtro para ver os `inputSchema` (todos `type: object`) e os `outputSchema`, iguais aos de `exemplos/wire/01`.
+Run `mcp_post "$(corpo 01-tools-list.json)"` without the filter to see the `inputSchema` of each tool (all `type: object`) and the `outputSchema`, identical to those in `exemplos/wire/01`.
 
-**1.2 `listar_salas`: structuredContent e o mesmo JSON em texto**
+**1.2 `listar_salas`: structuredContent plus the same JSON as text**
 
 ```bash
 mcp_post "$(corpo 02-tools-call-livre.json params.name=listar_salas params.arguments={})" | python3 -c 'import json,sys; r=json.loads(sys.stdin.read().split("\nHTTP ")[0])["result"]; print("salas:", len(r["structuredContent"]["salas"]), "| texto == structuredContent:", json.loads(r["content"][0]["text"]) == r["structuredContent"])'
@@ -59,7 +61,7 @@ mcp_post "$(corpo 02-tools-call-livre.json params.name=listar_salas params.argum
 salas: 5 | texto == structuredContent: True
 ```
 
-**1.3 Resource `politica://uso`**
+**1.3 The `politica://uso` resource**
 
 ```bash
 mcp_post "$(corpo 05-resources-read-politica.json)" | pegar result.contents.0
@@ -68,7 +70,7 @@ mcp_post "$(corpo 05-resources-read-politica.json)" | pegar result.contents.0
 {"mimeType": "text/markdown", "text": "versao: 2026-11-01\n\n- Reservas somente entre 08:00 e 20:00, horario de Sao Paulo (-03:00).\n- Duracao maxima de 2 horas por reserva.\n- Uma sala nao pode ter duas reservas sobrepostas.\n", "uri": "politica://uso"}
 ```
 
-**1.4 e 1.5 `_meta` incompleto: -32602 e HTTP 400**
+**1.4 and 1.5 Incomplete `_meta`: -32602 with HTTP 400**
 
 ```bash
 mcp_post "$(corpo 01-tools-list.json params._meta.io.modelcontextprotocol/protocolVersion=-)"
@@ -81,7 +83,7 @@ HTTP 400
 HTTP 400
 ```
 
-**1.6 Resource inexistente: -32602**
+**1.6 Unknown resource: -32602**
 
 ```bash
 mcp_post "$(corpo 05-resources-read-politica.json params.uri=politica://inexistente)"
@@ -91,7 +93,7 @@ mcp_post "$(corpo 05-resources-read-politica.json params.uri=politica://inexiste
 HTTP 400
 ```
 
-**1.7 Tool inexistente é recusada** (o SDK usa `isError`, forma aceita pelo enunciado)
+**1.7 An unknown tool is rejected** (the SDK uses `isError`, a form the challenge accepts)
 
 ```bash
 mcp_post "$(corpo 02-tools-call-livre.json params.name=voar_delorean params.arguments={})"
@@ -101,7 +103,7 @@ mcp_post "$(corpo 02-tools-call-livre.json params.name=voar_delorean params.argu
 HTTP 200
 ```
 
-**1.8 Header que não bate com o corpo: -32020**
+**1.8 A header that does not match the body: -32020**
 
 ```bash
 curl -s $MCP/mcp -w '\nHTTP %{http_code}\n' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
@@ -112,7 +114,7 @@ curl -s $MCP/mcp -w '\nHTTP %{http_code}\n' -H 'Content-Type: application/json' 
 HTTP 400
 ```
 
-**No terminal 1**, cada request aparece numa linha com método, id, nome, capability de elicitation e traceparent:
+**In terminal 1**, every request shows up as one line with the method, id, name, elicitation capability and traceparent:
 
 ```
 [mcp] method=tools/list id=1 elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
@@ -120,19 +122,19 @@ HTTP 400
 
 ---
 
-## 2. Política de uso e erros de execução
+## 2. Usage policy and tool execution errors
 
-Continua no mesmo servidor. `c SALA INICIO FIM` chama `consultar_disponibilidade` no dia 2026-11-03:
+Same server. `c ROOM START END` calls `consultar_disponibilidade` on 2026-11-03:
 
 ```bash
 c() { mcp_post "$(corpo 02-tools-call-livre.json params.name=consultar_disponibilidade "params.arguments={\"sala\":\"$1\",\"inicio\":\"2026-11-03T$2:00-03:00\",\"fim\":\"2026-11-03T$3:00-03:00\"}")"; }
 
-c sala-aquario 09:00 10:00 | pegar result.structuredContent   # 2.1 livre
-c sala-garagem 14:00 15:00 | pegar result.structuredContent   # 2.2 ocupada
-c sala-delorean 09:00 10:00 | pegar result.content.0.text     # 2.3 sala inexistente
-c sala-aquario 07:00 08:00 | pegar result.content.0.text      # 2.4 fora da janela
-c sala-aquario 09:00 12:00 | pegar result.content.0.text      # 2.5 mais de 2 horas
-c sala-aquario 10:00 09:00 | pegar result.content.0.text      # 2.6 intervalo invertido
+c sala-aquario 09:00 10:00 | pegar result.structuredContent   # 2.1 free
+c sala-garagem 14:00 15:00 | pegar result.structuredContent   # 2.2 taken
+c sala-delorean 09:00 10:00 | pegar result.content.0.text     # 2.3 unknown room
+c sala-aquario 07:00 08:00 | pegar result.content.0.text      # 2.4 outside the allowed window
+c sala-aquario 09:00 12:00 | pegar result.content.0.text      # 2.5 longer than 2 hours
+c sala-aquario 10:00 09:00 | pegar result.content.0.text      # 2.6 reversed interval
 ```
 ```
 {"sala": "sala-aquario", "livre": true, "conflitos": []}
@@ -142,15 +144,15 @@ Error executing tool consultar_disponibilidade: Fora da janela de uso: a politic
 Error executing tool consultar_disponibilidade: Duracao acima do limite: a politica permite no maximo 2 horas
 Error executing tool consultar_disponibilidade: Intervalo invalido: fim deve ser posterior a inicio
 ```
-Os erros de 2.3 a 2.6 vêm com `isError: true` (veja sem o `pegar`). `reservar_sala` aplica as mesmas validações.
+Errors 2.3 to 2.6 come with `isError: true` (run them without `pegar` to see it). `reservar_sala` applies the same validations.
 
 ---
 
-## 3. MRTR na reserva
+## 3. MRTR on booking
 
-Continua no mesmo servidor, ainda sem reiniciar.
+Same server, still not restarted.
 
-**3.1 Reserva livre: `complete` direto** (`exemplos/wire/02`)
+**3.1 Free slot: `complete` right away** (`exemplos/wire/02`)
 
 ```bash
 mcp_post "$(corpo 02-tools-call-livre.json)" | pegar result.structuredContent
@@ -159,7 +161,7 @@ mcp_post "$(corpo 02-tools-call-livre.json)" | pegar result.structuredContent
 {"reserva": "res-0003", "reservado": true, "sala": "sala-aquario", "inicio": "2026-11-03T09:00:00-03:00", "fim": "2026-11-03T10:00:00-03:00", "responsavel": "Doc", "politica": "2026-11-01", "motivo": null}
 ```
 
-**3.2 Conflito: `input_required` com uma elicitation em form mode e um `requestState`** (`exemplos/wire/03`)
+**3.2 Conflict: `input_required` with one form-mode elicitation and a `requestState`** (`exemplos/wire/03`)
 
 ```bash
 mcp_post "$(corpo 03-tools-call-conflito-input-required.json)" > /tmp/conflito.txt
@@ -174,9 +176,9 @@ input_required
 {"__main__:escolha_de_sala": {"method": "elicitation/create", "params": {"message": "A sala pedida esta ocupada nesse intervalo. Escolha uma alternativa.", "mode": "form", "requestedSchema": {"properties": {"sala": {"description": "Sala alternativa escolhida", "enum": ["sala-fusca", "sala-mirante"], "title": "Sala", "type": "string"}}, "required": ["sala"], "type": "object"}}}}
 v1.U8D7eN_S7WOlgItV7u-7e...
 ```
-O enum traz as salas livres com capacidade ≥ 12, por capacidade e id, e no máximo três.
+The enum lists the free rooms with capacity ≥ 12, ordered by capacity and then id, at most three.
 
-**3.3 O mesmo conflito sem declarar elicitation: -32021 e HTTP 400** (`exemplos/wire/06`)
+**3.3 The same conflict without declaring elicitation: -32021 with HTTP 400** (`exemplos/wire/06`)
 
 ```bash
 mcp_post "$(corpo 06-erro-32021-sem-elicitation.json)"
@@ -186,7 +188,7 @@ mcp_post "$(corpo 06-erro-32021-sem-elicitation.json)"
 HTTP 400
 ```
 
-**3.4 `requestState` com um caractere trocado: -32602**
+**3.4 `requestState` with one character changed: -32602**
 
 ```bash
 ADULTERADO="${ESTADO:0:40}$( [ "${ESTADO:40:1}" = A ] && echo B || echo A )${ESTADO:41}"
@@ -196,9 +198,9 @@ mcp_post "$(corpo 04-tools-call-retry.json params.requestState=$ADULTERADO "$ACE
 {"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid or expired requestState","data":{"reason":"invalid_request_state"}}}
 HTTP 400
 ```
-No terminal 1 aparece o motivo real: `requestState rejected on tools/call: seal`.
+Terminal 1 shows the real reason: `requestState rejected on tools/call: seal`.
 
-**3.5 Retry com argumentos adulterados (`responsavel=Biff`): rejeitado, não reserva**
+**3.5 Retry with tampered arguments (`responsavel=Biff`): rejected, nothing booked**
 
 ```bash
 mcp_post "$(corpo 04-tools-call-retry.json params.requestState=$ESTADO "$ACEITE" params.arguments.responsavel=Biff)"
@@ -207,11 +209,11 @@ mcp_post "$(corpo 04-tools-call-retry.json params.requestState=$ESTADO "$ACEITE"
 {"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid or expired requestState","data":{"reason":"invalid_request_state"}}}
 HTTP 400
 ```
-No terminal 1: `requestState rejected on tools/call: request binding`.
+In terminal 1: `requestState rejected on tools/call: request binding`.
 
-**3.6 Retry válido depois de reiniciar o servidor MCP** (`exemplos/wire/04`)
+**3.6 Valid retry after restarting the MCP server** (`exemplos/wire/04`)
 
-Reinicie o servidor no terminal 1 (Ctrl+C e `uv run python servidor.py`, com o mesmo segredo exportado). Depois:
+Restart the server in terminal 1 (Ctrl+C, then `uv run python servidor.py`, with the same secret exported). Then:
 
 ```bash
 mcp_post "$(corpo 04-tools-call-retry.json params.requestState=$ESTADO "$ACEITE")"
@@ -220,9 +222,9 @@ mcp_post "$(corpo 04-tools-call-retry.json params.requestState=$ESTADO "$ACEITE"
 {"jsonrpc":"2.0","id":4,"result":{"content":[{"text":"{\n  \"reserva\": \"res-0003\",\n  \"reservado\": true,\n  \"sala\": \"sala-fusca\", ...}"}],"isError":false,"resultType":"complete","structuredContent":{"reserva":"res-0003","reservado":true,"sala":"sala-fusca","inicio":"2026-11-03T14:00:00-03:00","fim":"2026-11-03T15:00:00-03:00","responsavel":"Marty","politica":"2026-11-01","motivo":null},...}
 HTTP 200
 ```
-O processo novo não tinha nada em memória: tudo veio do `requestState` e dos argumentos que ele sela. O id do retry (4) é diferente do id do pedido (3).
+The new process had nothing in memory: everything came from the `requestState` and from the arguments it seals. The retry id (4) differs from the request id (3).
 
-**3.7 Recusa (`action: decline`): `complete`, sem `isError`, `reservado: false`** (`exemplos/wire/11`)
+**3.7 Decline (`action: decline`): `complete`, no `isError`, `reservado: false`** (`exemplos/wire/11`)
 
 ```bash
 R=$(mcp_post "$(corpo 11-tools-call-retry-recusa.json params.inputResponses=- params.requestState=-)"); pegar result.resultType <<< "$R"
@@ -233,25 +235,25 @@ input_required
 {"reserva": null, "reservado": false, "sala": null, "inicio": null, "fim": null, "responsavel": null, "politica": null, "motivo": "recusado"}
 ```
 
-**3.8 Conflito sem alternativa possível: `isError`, sem elicitation**
+**3.8 Conflict with no possible alternative: `isError`, no elicitation**
 
 ```bash
 r() { mcp_post "$(corpo 02-tools-call-livre.json 'params.arguments={"sala":"sala-mirante","inicio":"2026-11-03T11:00:00-03:00","fim":"2026-11-03T12:00:00-03:00","responsavel":"Doc"}')"; }
-r | pegar result.structuredContent.reserva   # a primeira reserva passa
-r | pegar result                             # a segunda conflita, e nao ha sala com capacidade >= 20
+r | pegar result.structuredContent.reserva   # the first booking goes through
+r | pegar result                             # the second conflicts, and no room has capacity >= 20
 ```
 ```
 res-0004
 {"content": [{"text": "Error executing tool reservar_sala: Sem alternativas disponiveis no intervalo", "type": "text"}], "isError": true, "resultType": "complete", ...}
 ```
 
-**3.9 Expiração.** O `requestState` vale 10 minutos (`VALIDADE_REQUEST_STATE` em [servidor-mcp/servidor.py](servidor-mcp/servidor.py)). Para conferir, gere um conflito como em 3.2, espere mais de 10 minutos e reenvie o retry: a resposta é a mesma de 3.4, e o terminal 1 mostra `requestState rejected on tools/call: expired`.
+**3.9 Expiry.** The `requestState` is valid for 10 minutes (`VALIDADE_REQUEST_STATE` in [servidor-mcp/servidor.py](servidor-mcp/servidor.py)). To check it, create a conflict as in 3.2, wait more than 10 minutes and resend the retry: the response is the same as in 3.4, and terminal 1 shows `requestState rejected on tools/call: expired`.
 
 ---
 
-## 4. O agente como host MCP
+## 4. The agent as an MCP host
 
-**Reinicie os dois processos** (terminal 1 e terminal 2). Depois:
+**Restart both processes** (terminal 1 and terminal 2). Then:
 
 ```bash
 P() { echo "reservar sala=$1 inicio=2026-11-03T$2:00-03:00 fim=2026-11-03T$3:00-03:00 responsavel=$4"; }
@@ -264,7 +266,7 @@ mensagem : Reserva res-0003 confirmada na sala-porao.
 artifact : reserva {"reserva": "res-0003", "sala": "sala-porao", "inicio": "2026-11-03T09:00:00-03:00", "fim": "2026-11-03T10:00:00-03:00", "responsavel": "Doc", "politica": "2026-11-01"}
 ```
 
-No **terminal 1** (servidor MCP), confira:
+In **terminal 1** (MCP server), check:
 
 ```
 [mcp] method=tools/list id=1 elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4c2b7e4dcdc2c617-01
@@ -272,39 +274,39 @@ No **terminal 1** (servidor MCP), confira:
 [mcp] method=tools/call id=3 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-3f3a4c23856c99c9-01
 ```
 
-- `tools/list` vem antes do primeiro `tools/call`: o agente descobre as tools em tempo de execução e monta os argumentos a partir do `inputSchema`.
-- `resources/read` de `politica://uso`: a versão `2026-11-01` sai daqui e vai para o campo `politica` do artifact.
-- `elicitation=form`: todo request do agente declara `{"elicitation": {"form": {}}}` no `_meta`.
-- O traceparent tem o mesmo trace-id (`4bf92f35...`) do header enviado ao agente, com span-id novo em cada request.
+- `tools/list` comes before the first `tools/call`: the agent discovers the tools at runtime and builds the arguments from the `inputSchema`.
+- `resources/read` of `politica://uso`: the version `2026-11-01` comes from here and goes into the artifact's `politica` field.
+- `elicitation=form`: every agent request declares `{"elicitation": {"form": {}}}` in `_meta`.
+- The traceparent carries the same trace-id (`4bf92f35...`) as the header sent to the agent, with a new span-id on every request.
 
-No **terminal 2** (agente) aparecem as transições `SUBMITTED -> WORKING -> COMPLETED`.
+**Terminal 2** (agent) shows the transitions `SUBMITTED -> WORKING -> COMPLETED`.
 
 ---
 
-## 5. O agente como servidor A2A
+## 5. The agent as an A2A server
 
-Continua nos mesmos processos da seção 4.
+Same processes as section 4.
 
 ```bash
 # 5.1 Agent Card
 curl -s $AGENTE/.well-known/agent-card.json | python3 -c 'import json,sys; c=json.load(sys.stdin); print(c["name"], "|", json.dumps(c["supportedInterfaces"]), "|", [s["id"] for s in c["skills"]])'
 
-# 5.2 sala livre: COMPLETED com artifact
+# 5.2 free room: COMPLETED with an artifact
 R=$(a2a_enviar "$(P sala-aquario 10:00 11:00 Doc)"); resumo_task <<< "$R"; T=$(pegar result.task.id <<< "$R")
 
-# 5.3 GetTask: id, contextId, estado corrente e artifact
+# 5.3 GetTask: id, contextId, current state and artifact
 a2a_get $T | python3 -c 'import json,sys; t=json.load(sys.stdin)["result"]["task"]; print(t["id"], t["contextId"], t["status"]["state"], [m["role"] for m in t["history"]], [a["name"] for a in t["artifacts"]])'
 
-# 5.4 SendMessage para uma Task terminal: erro
+# 5.4 SendMessage to a terminal Task: error
 a2a_enviar "escolha=sala-fusca" $T | resumo_task
 
-# 5.5 sala inexistente: FAILED com a mensagem exata da tool
+# 5.5 unknown room: FAILED with the tool's exact message
 a2a_enviar "$(P sala-inexistente 09:00 10:00 Doc)" | resumo_task
 
-# 5.6 pedido fora do formato fixo: REJECTED
+# 5.6 request outside the fixed format: REJECTED
 a2a_enviar "quero uma sala amanha" | resumo_task
 
-# 5.7 GetTask de Task inexistente
+# 5.7 GetTask for an unknown Task
 a2a_get task-nao-existe | resumo_task
 ```
 ```
@@ -323,25 +325,25 @@ estado   : TASK_STATE_REJECTED
 mensagem : Pedido fora do formato. Use: reservar sala=<id> inicio=<iso8601> fim=<iso8601> responsavel=<nome>
 ERRO {"code": -32001, "message": "Task nao encontrada: task-nao-existe"}
 ```
-Para comparar o card inteiro com `exemplos/wire/07-a2a-agent-card.json`: `curl -s $AGENTE/.well-known/agent-card.json | python3 -m json.tool`.
+To compare the whole card against `exemplos/wire/07-a2a-agent-card.json`: `curl -s $AGENTE/.well-known/agent-card.json | python3 -m json.tool`.
 
 ---
 
-## 6. A ponte
+## 6. The bridge
 
-Continua nos mesmos processos.
+Same processes.
 
 ```bash
-# 6.1 sala ocupada (exemplos/wire/08): a Task pausa com a linha de alternativas
+# 6.1 taken room (exemplos/wire/08): the Task pauses with the alternatives line
 R=$(a2a_post "$(corpo 08-a2a-send-message.json)"); resumo_task <<< "$R"; T=$(pegar result.task.id <<< "$R")
 
-# 6.2 GetTask reflete a pausa
+# 6.2 GetTask reflects the pause
 a2a_get $T | resumo_task
 
-# 6.3 escolha fora do enum: continua pausada e repete a lista
+# 6.3 choice outside the enum: stays paused and repeats the list
 a2a_enviar "escolha=sala-aquario" $T | resumo_task
 
-# 6.4 escolha valida (exemplos/wire/10): retry MCP com id novo, COMPLETED na sala escolhida
+# 6.4 valid choice (exemplos/wire/10): MCP retry with a new id, COMPLETED in the chosen room
 a2a_enviar "escolha=sala-mirante" $T | resumo_task
 ```
 ```
@@ -360,7 +362,7 @@ mensagem : Reserva res-0005 confirmada na sala-mirante.
 artifact : reserva {"reserva": "res-0005", "sala": "sala-mirante", "inicio": "2026-11-03T14:00:00-03:00", "fim": "2026-11-03T15:00:00-03:00", "responsavel": "Marty", "politica": "2026-11-01"}
 ```
 
-No **terminal 1**, o par da pausa: o `tools/call` inicial e o retry, com ids diferentes e o mesmo trace-id. A escolha inválida de 6.3 não gerou request MCP: o agente validou contra o enum que já tinha.
+In **terminal 1**, the pair behind the pause: the initial `tools/call` and the retry, with different ids and the same trace-id. The invalid choice in 6.3 produced no MCP request: the agent checked it against the enum it already had.
 
 ```
 [mcp] method=tools/call id=12 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-ad8d6af9c2f5232a-01
@@ -368,7 +370,7 @@ No **terminal 1**, o par da pausa: o `tools/call` inicial e o retry, com ids dif
 ```
 
 ```bash
-# 6.5 o mesmo pedido de novo e recusa: CANCELED (a sala-mirante ja foi reservada em 6.4)
+# 6.5 the same request again, then decline: CANCELED (sala-mirante was already booked in 6.4)
 R=$(a2a_post "$(corpo 08-a2a-send-message.json)"); resumo_task <<< "$R"; T=$(pegar result.task.id <<< "$R")
 a2a_enviar "escolha=recusar" $T | resumo_task
 ```
@@ -382,7 +384,7 @@ mensagem : Reserva nao realizada: recusado.
 ```
 
 ```bash
-# 6.6 duas Tasks pausadas ao mesmo tempo, retomadas em ordem inversa
+# 6.6 two Tasks paused at the same time, resumed in reverse order
 A=$(a2a_enviar "$(P sala-fusca 16:00 17:00 Lorraine)" | pegar result.task)
 B=$(a2a_enviar "$(P sala-garagem 14:00 15:00 George)" | pegar result.task)
 for X in "$A" "$B"; do python3 -c 'import json,sys; t=json.loads(sys.argv[1]); print(t["id"], t["status"]["state"], t["status"]["message"]["parts"][0]["text"])' "$X"; done
@@ -402,10 +404,10 @@ estado   : TASK_STATE_COMPLETED
 mensagem : Reserva res-0007 confirmada na sala-garagem.
 artifact : reserva {"reserva": "res-0007", "sala": "sala-garagem", "inicio": "2026-11-03T16:00:00-03:00", "fim": "2026-11-03T17:00:00-03:00", "responsavel": "Lorraine", "politica": "2026-11-01"}
 ```
-Cada Task concluiu com o próprio intervalo e o próprio responsável: os `requestState` não se misturaram.
+Each Task completed with its own interval and its own requester: the `requestState`s did not get mixed up.
 
 ```bash
-# 6.7 o requestState (prefixo "v1.") nao aparece em nenhuma resposta A2A
+# 6.7 the requestState (prefix "v1.") appears in no A2A response
 for t in $TA $TB $T; do a2a_get $t; done | grep -c '"v1\.'
 ```
 ```
@@ -414,12 +416,12 @@ for t in $TA $TB $T; do a2a_get $t; done | grep -c '"v1\.'
 
 ---
 
-## 7. Validador
+## 7. Validator
 
-**Reinicie os dois processos** e rode na raiz:
+**Restart both processes** and run, from the repository root:
 
 ```bash
 python3 validador/validar.py --agente http://localhost:7300 --mcp http://localhost:7301; echo "exit=$?"
 ```
 
-O esperado é `resumo: 36 passaram, 0 falharam, de 36 verificacoes` e `exit=0`. A saída completa da última execução está no [README](README.md#saída-do-validador). Depois, procure no terminal 1 o trace-id que o validador imprimiu na primeira linha: ele aparece no `traceparent` do `tools/list`, do `resources/read` e dos `tools/call` emitidos pelo agente.
+Expected: `resumo: 36 passaram, 0 falharam, de 36 verificacoes` and `exit=0`. The full output of the last run is in the [README](README.md#validator-output-saída-do-validador). Then look in terminal 1 for the trace-id the validator printed on its first line: it appears in the `traceparent` of the `tools/list`, `resources/read` and `tools/call` requests issued by the agent.
