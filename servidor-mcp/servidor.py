@@ -1,11 +1,11 @@
-"""Servidor MCP da Central de Salas (Streamable HTTP, revisao 2026-07-28).
+"""Central de Salas MCP server (Streamable HTTP, revision 2026-07-28).
 
-Expoe tres tools (listar_salas, consultar_disponibilidade, reservar_sala) e o
-resource politica://uso. Quando a reserva conflita, reservar_sala responde
-input_required pelo MRTR do SDK: o resolver `escolha_de_sala` devolve um
-`Elicit`, o SDK empacota a pergunta em `inputRequests` e sela o `requestState`
-com AES-256-GCM (chave de REQUEST_STATE_SECRET). Nada fica em memoria entre o
-input_required e o retry.
+Exposes three tools (listar_salas, consultar_disponibilidade, reservar_sala) and
+the politica://uso resource. When a booking conflicts, reservar_sala answers
+input_required through the SDK's MRTR: the `escolha_de_sala` resolver returns an
+`Elicit`, the SDK packs the question into `inputRequests` and seals the
+`requestState` with AES-256-GCM (key from REQUEST_STATE_SECRET). Nothing is kept
+in memory between the input_required and the retry.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ SAO_PAULO = timezone(timedelta(hours=-3))
 JANELA_INICIO, JANELA_FIM = 8 * 60, 20 * 60
 DURACAO_MAXIMA = timedelta(hours=2)
 MAX_ALTERNATIVAS = 3
-VALIDADE_REQUEST_STATE = 10 * 60  # segundos
+VALIDADE_REQUEST_STATE = 10 * 60  # seconds
 
 ERRO_JANELA = "Fora da janela de uso: a politica permite reservas entre 08:00 e 20:00"
 ERRO_DURACAO = "Duracao acima do limite: a politica permite no maximo 2 horas"
@@ -43,7 +43,7 @@ def log(mensagem: str) -> None:
     print(mensagem, file=sys.stderr, flush=True)
 
 
-# --- dominio: dados do starter, reservas em memoria -------------------------
+# --- domain: starter data, bookings in memory -------------------------------
 
 SALAS: list[dict[str, Any]] = json.loads((DADOS / "salas.json").read_text(encoding="utf-8"))
 SALAS_POR_ID = {s["id"]: s for s in SALAS}
@@ -71,7 +71,7 @@ def _na_janela(instante: datetime) -> bool:
 
 
 def validar_pedido(sala: str, inicio: str, fim: str) -> tuple[datetime, datetime]:
-    """Regras da politica de uso, na ordem: sala, intervalo, janela, duracao."""
+    """Usage policy rules, in order: room, interval, window, duration."""
     if sala not in SALAS_POR_ID:
         raise ToolError(f"Sala inexistente: {sala}")
     ini, fi = _instante(inicio), _instante(fim)
@@ -93,7 +93,7 @@ def conflitos(sala: str, ini: datetime, fi: datetime) -> list[dict[str, Any]]:
 
 
 def alternativas(sala: str, ini: datetime, fi: datetime) -> list[str]:
-    """Salas livres com capacidade >= a pedida, por capacidade e id, no maximo tres."""
+    """Free rooms with capacity >= the requested one, by capacity then id, at most three."""
     minima = SALAS_POR_ID[sala]["capacidade"]
     livres = [
         s for s in SALAS if s["id"] != sala and s["capacidade"] >= minima and not conflitos(s["id"], ini, fi)
@@ -114,7 +114,7 @@ def criar_reserva(sala: str, inicio: str, fim: str, responsavel: str) -> dict[st
     return reserva
 
 
-# --- contratos de saida -----------------------------------------------------
+# --- output contracts -------------------------------------------------------
 
 
 class SalaOut(BaseModel):
@@ -157,7 +157,7 @@ class EscolhaDeSala(BaseModel):
 
 
 def schema_da_escolha(opcoes: list[str]) -> type[EscolhaDeSala]:
-    """Schema plano da elicitation: `sala` restrita as alternativas, na ordem calculada."""
+    """Flat elicitation schema: `sala` restricted to the alternatives, in computed order."""
     return create_model(
         "EscolhaDeSala",
         __base__=EscolhaDeSala,
@@ -165,14 +165,14 @@ def schema_da_escolha(opcoes: list[str]) -> type[EscolhaDeSala]:
     )
 
 
-# --- servidor MCP -----------------------------------------------------------
+# --- MCP server -------------------------------------------------------------
 
 
 def _segredo() -> str:
     segredo = os.environ.get("REQUEST_STATE_SECRET", "")
     if len(segredo.encode()) < 32:
         sys.exit(
-            "REQUEST_STATE_SECRET ausente ou com menos de 32 bytes. Gere com:\n"
+            "REQUEST_STATE_SECRET is missing or shorter than 32 bytes. Generate one with:\n"
             '  export REQUEST_STATE_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")'
         )
     return segredo
@@ -198,10 +198,10 @@ def consultar_disponibilidade(sala: str, inicio: str, fim: str) -> Disponibilida
 
 
 def escolha_de_sala(sala: str, inicio: str, fim: str) -> Elicit[EscolhaDeSala] | None:
-    """Resolver do MRTR: so pergunta quando a sala pedida esta ocupada.
+    """MRTR resolver: asks only when the requested room is taken.
 
-    Roda de novo a cada round (inclusive depois de um restart); a resposta do
-    cliente so e aceita se a pergunta renderizada for identica a que foi selada.
+    Runs again on every round (including after a restart); the client's answer is
+    accepted only if the rendered question is identical to the one that was sealed.
     """
     ini, fi = validar_pedido(sala, inicio, fim)
     if not conflitos(sala, ini, fi):
@@ -244,11 +244,11 @@ def politica_de_uso() -> str:
     return TEXTO_POLITICA
 
 
-# --- log de cada request no stderr -----------------------------------------
+# --- one stderr log line per request ---------------------------------------
 
 
 class LogDeRequests:
-    """ASGI: registra metodo, id, nome e traceparent de todo POST recebido, antes do SDK."""
+    """ASGI: logs method, id, name and traceparent of every POST received, before the SDK."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -281,10 +281,10 @@ class LogDeRequests:
         try:
             msg = json.loads(corpo)
         except ValueError:
-            log("[mcp] request com corpo invalido")
+            log("[mcp] request with an invalid body")
             return
         if not isinstance(msg, dict):
-            log("[mcp] request fora do formato JSON-RPC")
+            log("[mcp] request is not JSON-RPC")
             return
         params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
         meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
@@ -292,11 +292,11 @@ class LogDeRequests:
         if params.get("name") or params.get("uri"):
             extra += f" name={params.get('name') or params.get('uri')}"
         if "requestState" in params:
-            extra += " retry=sim"
+            extra += " retry=yes"
         capacidades = meta.get("io.modelcontextprotocol/clientCapabilities")
         if isinstance(capacidades, dict):
             elicitation = capacidades.get("elicitation")
-            extra += f" elicitation={'+'.join(sorted(elicitation)) or 'vazia' if isinstance(elicitation, dict) else 'nao'}"
+            extra += f" elicitation={'+'.join(sorted(elicitation)) or 'empty' if isinstance(elicitation, dict) else 'none'}"
         log(
             f"[mcp] method={msg.get('method')} id={msg.get('id')}{extra} "
             f"traceparent={meta.get('traceparent', '-')}"
@@ -309,7 +309,7 @@ app = LogDeRequests(mcp.streamable_http_app(json_response=True, stateless_http=T
 def main() -> None:
     host = os.environ.get("MCP_HOST", "127.0.0.1")
     porta = int(os.environ.get("MCP_PORT", "7301"))
-    log(f"[mcp] central-de-salas em http://{host}:{porta}/mcp (politica {VERSAO_POLITICA})")
+    log(f"[mcp] central-de-salas at http://{host}:{porta}/mcp (policy {VERSAO_POLITICA})")
     uvicorn.run(app, host=host, port=porta, log_level="warning")
 
 

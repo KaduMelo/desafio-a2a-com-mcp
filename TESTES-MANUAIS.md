@@ -366,7 +366,7 @@ In **terminal 1**, the pair behind the pause: the initial `tools/call` and the r
 
 ```
 [mcp] method=tools/call id=12 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-ad8d6af9c2f5232a-01
-[mcp] method=tools/call id=13 name=reservar_sala retry=sim elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4eb10c9a0e92acb6-01
+[mcp] method=tools/call id=13 name=reservar_sala retry=yes elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4eb10c9a0e92acb6-01
 ```
 
 ```bash

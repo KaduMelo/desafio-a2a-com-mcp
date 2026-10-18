@@ -43,7 +43,7 @@ uv run python agente.py
 python3 validador/validar.py --agente http://localhost:7300 --mcp http://localhost:7301
 ```
 
-The MCP server's stderr (terminal 1) logs one line per request, with the method, id, tool or resource name, the elicitation capability the client declared, and the traceparent. The retry of a paused booking is tagged `retry=sim` and has a different id from the initial request:
+The MCP server's stderr (terminal 1) logs one line per request, with the method, id, tool or resource name, the elicitation capability the client declared, and the traceparent. The retry of a paused booking is tagged `retry=yes` and has a different id from the initial request:
 
 ```
 [mcp] method=tools/list id=1 elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4c2b7e4dcdc2c617-01
@@ -51,7 +51,7 @@ The MCP server's stderr (terminal 1) logs one line per request, with the method,
 [mcp] method=tools/call id=3 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-3f3a4c23856c99c9-01
 ...
 [mcp] method=tools/call id=12 name=reservar_sala elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-ad8d6af9c2f5232a-01
-[mcp] method=tools/call id=13 name=reservar_sala retry=sim elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4eb10c9a0e92acb6-01
+[mcp] method=tools/call id=13 name=reservar_sala retry=yes elicitation=form traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-4eb10c9a0e92acb6-01
 ```
 
 The agent's stderr (terminal 2) logs every A2A request and every Task state transition.

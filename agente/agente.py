@@ -1,8 +1,8 @@
-"""Agente A2A da Central de Salas: servidor A2A v1.0 (JSON-RPC) por fora, host MCP por dentro.
+"""Central de Salas A2A agent: A2A v1.0 server (JSON-RPC) outside, MCP host inside.
 
-Sem LLM: o pedido chega em formato fixo e o agente decide por regra. O agente
-nao implementa regra de sala; conflito, politica e alternativas sao do servidor
-MCP. O que ele faz e traduzir protocolo: Task A2A <-> tools/call MCP, e
+No LLM: the request arrives in a fixed format and the agent decides by rule. The
+agent implements no room rules; conflicts, policy and alternatives belong to the
+MCP server. What it does is translate protocol: A2A Task <-> MCP tools/call, and
 `input_required` (MRTR) <-> TASK_STATE_INPUT_REQUIRED.
 """
 
@@ -44,12 +44,12 @@ FAILED = "TASK_STATE_FAILED"
 REJECTED = "TASK_STATE_REJECTED"
 TERMINAIS = {COMPLETED, CANCELED, FAILED, REJECTED}
 
-# Erros JSON-RPC do A2A v1.0
+# A2A v1.0 JSON-RPC errors
 TASK_NOT_FOUND = -32001
 UNSUPPORTED_OPERATION = -32004
 
 
-# --- cartao --------------------------------------------------------------------
+# --- agent card ----------------------------------------------------------------
 
 AGENT_CARD = {
     "name": "Central de Salas",
@@ -81,7 +81,7 @@ AGENT_CARD = {
 
 @dataclass
 class Pausa:
-    """O que a Task guarda enquanto espera o cliente A2A. Nunca sai do agente."""
+    """What the Task keeps while waiting for the A2A client. It never leaves the agent."""
 
     tool: str
     argumentos: dict[str, Any]
@@ -116,7 +116,7 @@ class Task:
 
     def transitar(self, estado: str, texto: str | None = None) -> None:
         if self.estado in TERMINAIS:
-            raise RuntimeError(f"a Task {self.id} ja terminou em {self.estado}")
+            raise RuntimeError(f"Task {self.id} already ended in {self.estado}")
         anterior, self.estado = self.estado, estado
         self.mensagem = None
         if texto is not None:
@@ -142,7 +142,7 @@ class ErroRPC(Exception):
         self.mensagem = mensagem
 
 
-# --- leitura do pedido em formato fixo -----------------------------------------
+# --- parsing the fixed-format request -------------------------------------------
 
 _PEDIDO = re.compile(r"^\s*reservar\s+(?P<campos>.+?)\s*$", re.IGNORECASE)
 _CAMPO = re.compile(r"(\w+)=(\S+)")
@@ -167,14 +167,14 @@ def texto_da_mensagem(mensagem: dict[str, Any]) -> str:
 
 
 def trace_do_header(valor: str | None) -> tuple[str, str] | None:
-    """Le o trace-id e as flags de um traceparent W3C valido."""
+    """Reads the trace-id and flags from a valid W3C traceparent."""
     casado = re.fullmatch(r"00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})", (valor or "").strip())
     if not casado or casado.group(1) == "0" * 32:
         return None
     return casado.group(1), casado.group(3)
 
 
-# --- a ponte -------------------------------------------------------------------
+# --- the bridge ----------------------------------------------------------------
 
 
 def alternativas(pergunta: Pergunta) -> str:
@@ -183,10 +183,10 @@ def alternativas(pergunta: Pergunta) -> str:
 
 async def concluir_com(task: Task, resultado: types.CallToolResult | types.InputRequiredResult, tool: str,
                        argumentos: dict[str, Any]) -> None:
-    """Traduz o resultado de um tools/call MCP para o estado da Task A2A."""
+    """Translates the result of an MCP tools/call into the A2A Task state."""
     if isinstance(resultado, types.InputRequiredResult):
-        # PONTE (ida): input_required do MCP vira TASK_STATE_INPUT_REQUIRED. O
-        # requestState fica guardado na Task, opaco, e so volta para o servidor MCP.
+        # PONTE (outbound): MCP input_required becomes TASK_STATE_INPUT_REQUIRED. The
+        # requestState is kept in the Task, opaque, and only goes back to the MCP server.
         pergunta = pergunta_de(resultado)
         task.pausa = Pausa(tool=tool, argumentos=argumentos, pergunta=pergunta)
         task.transitar(INPUT_REQUIRED, alternativas(pergunta))
@@ -227,7 +227,7 @@ async def iniciar(task: Task, texto: str) -> None:
         task.transitar(FAILED, f"O servidor MCP nao oferece a tool {TOOL_RESERVA}")
         return
     task.politica = await host.versao_da_politica(trace)
-    # Os argumentos saem do inputSchema descoberto, nao de uma lista fixa no codigo.
+    # Arguments come from the discovered inputSchema, not from a hardcoded list.
     esperados = list((tool.input_schema or {}).get("properties", {}))
     faltando = [nome for nome in (tool.input_schema or {}).get("required", []) if nome not in pedido]
     if faltando:
@@ -247,12 +247,12 @@ async def retomar(task: Task, texto: str) -> None:
     elif escolha in pausa.pergunta.opcoes:
         resposta = types.ElicitResult(action="accept", content={pausa.pergunta.campo: escolha})
     else:
-        # Escolha fora do enum: a Task continua pausada e repete a pergunta.
+        # Choice outside the enum: the Task stays paused and repeats the question.
         task.transitar(INPUT_REQUIRED, alternativas(pausa.pergunta))
         return
     task.transitar(WORKING)
-    # PONTE (volta): o mesmo tools/call, com id JSON-RPC novo, levando a resposta
-    # sob a mesma chave do inputRequests e o requestState ecoado sem modificacao.
+    # PONTE (return): the same tools/call, with a new JSON-RPC id, carrying the answer
+    # under the same inputRequests key and the requestState echoed unmodified.
     resultado = await host.chamar(
         pausa.tool,
         pausa.argumentos,
@@ -269,8 +269,8 @@ async def processar(task: Task, fazer) -> None:
     except MCPError as erro:
         task.pausa = None
         task.transitar(FAILED, f"Erro do servidor MCP ({erro.error.code}): {erro.error.message}")
-    except Exception as erro:  # o cliente A2A sempre recebe uma Task coerente
-        log(f"[a2a] task={task.id} erro inesperado: {erro!r}")
+    except Exception as erro:  # the A2A client always gets a consistent Task
+        log(f"[a2a] task={task.id} unexpected error: {erro!r}")
         task.pausa = None
         if task.estado not in TERMINAIS:
             task.transitar(FAILED, f"Erro interno do agente: {erro}")
@@ -309,7 +309,7 @@ async def send_message(params: dict[str, Any], traceparent: str | None) -> dict[
     task.trace_id, task.trace_flags = trace or (secrets.token_hex(16), "01")
     task.historico.append(mensagem)
     TASKS[task.id] = task
-    log(f"[a2a] task={task.id} criada em {SUBMITTED} trace-id={task.trace_id}")
+    log(f"[a2a] task={task.id} created in {SUBMITTED} trace-id={task.trace_id}")
     async with task.trava:
         await processar(task, iniciar(task, texto))
     return {"task": task.para_json()}
@@ -361,7 +361,7 @@ async def agent_card(_request: Request) -> JSONResponse:
 @asynccontextmanager
 async def ciclo_de_vida(_app: Starlette):
     await host.abrir()
-    log(f"[a2a] central-de-salas em {URL_PUBLICA}/a2a, host MCP de {MCP_URL}")
+    log(f"[a2a] central-de-salas at {URL_PUBLICA}/a2a, MCP host of {MCP_URL}")
     try:
         yield
     finally:

@@ -1,9 +1,9 @@
-"""O agente como host MCP: um cliente do SDK oficial falando Streamable HTTP.
+"""The agent as an MCP host: an official SDK client speaking Streamable HTTP.
 
-O cliente nao tem callback de elicitation. Toda chamada que pode pedir input usa
-`allow_input_required=True`, entao o `InputRequiredResult` chega cru ao agente,
-que decide o que fazer com ele (pausar a Task A2A). O `requestState` e tratado
-como bytes opacos: guardado e ecoado, nunca aberto.
+The client has no elicitation callback. Every call that may ask for input uses
+`allow_input_required=True`, so the `InputRequiredResult` reaches the agent raw,
+and the agent decides what to do with it (pause the A2A Task). The `requestState`
+is treated as opaque bytes: stored and echoed, never opened.
 """
 
 from __future__ import annotations
@@ -27,11 +27,11 @@ def log(mensagem: str) -> None:
 
 
 class _SessaoComElicitationForm(ClientSession):
-    """Declara so `{"elicitation": {"form": {}}}` no `_meta` de todo request.
+    """Declares only `{"elicitation": {"form": {}}}` in the `_meta` of every request.
 
-    O `ClientSession` do SDK so anuncia elicitation quando recebe um callback, e
-    nesse caso anuncia form e url e responde as perguntas sozinho. O agente quer o
-    contrario: anunciar form mode e nunca responder por conta propria.
+    The SDK's `ClientSession` only advertises elicitation when given a callback, and
+    then it advertises form and url and answers the questions by itself. The agent
+    wants the opposite: advertise form mode and never answer on its own.
     """
 
     def _build_capabilities(self, version: str) -> types.ClientCapabilities:
@@ -46,13 +46,13 @@ class _Cliente(Client):
 
 
 def novo_traceparent(trace_id: str, flags: str = "01") -> str:
-    """Mesmo trace-id do cliente A2A, span-id novo para cada request MCP."""
+    """Same trace-id as the A2A client, new span-id for every MCP request."""
     return f"00-{trace_id}-{secrets.token_hex(8)}-{flags}"
 
 
 @dataclass
 class Pergunta:
-    """Um `input_required` visto pelo agente: o que perguntar e o que guardar."""
+    """An `input_required` as the agent sees it: what to ask and what to keep."""
 
     chave: str
     campo: str
@@ -67,8 +67,8 @@ class HostMCP:
         self._cliente: Client | None = None
 
     async def abrir(self) -> None:
-        # Versao fixada: sem server/discover e sem initialize. Cada request leva
-        # versao e capabilities no proprio _meta; nada e inferido de conexao.
+        # Pinned version: no server/discover and no initialize. Every request carries
+        # version and capabilities in its own _meta; nothing is inferred from the connection.
         cliente = _Cliente(
             self.url,
             mode=PROTOCOLO,
@@ -82,7 +82,7 @@ class HostMCP:
 
     @property
     def _sessao(self) -> ClientSession:
-        assert self._cliente is not None, "HostMCP.abrir() nao foi chamado"
+        assert self._cliente is not None, "HostMCP.abrir() was not called"
         return self._cliente.session
 
     @staticmethod
@@ -99,7 +99,7 @@ class HostMCP:
         primeira = texto.splitlines()[0] if texto else ""
         chave, _, valor = primeira.partition(":")
         if chave.strip() != "versao" or not valor.strip():
-            raise RuntimeError(f"o resource {POLITICA_URI} nao declara a versao na primeira linha")
+            raise RuntimeError(f"resource {POLITICA_URI} does not declare the version on its first line")
         return valor.strip()
 
     async def chamar(
@@ -111,7 +111,7 @@ class HostMCP:
         input_responses: types.InputResponses | None = None,
         request_state: str | None = None,
     ) -> types.CallToolResult | types.InputRequiredResult:
-        """Um tools/call. O SDK cunha um id JSON-RPC novo a cada chamada, inclusive no retry."""
+        """One tools/call. The SDK mints a new JSON-RPC id on every call, including the retry."""
         return await self._sessao.call_tool(
             tool,
             argumentos,
@@ -123,16 +123,16 @@ class HostMCP:
 
 
 def pergunta_de(resultado: types.InputRequiredResult) -> Pergunta:
-    """Extrai a elicitation em form mode de um `input_required`, sem tocar no requestState."""
+    """Extracts the form-mode elicitation from an `input_required`, without touching the requestState."""
     pedidos = resultado.input_requests or {}
     if len(pedidos) != 1 or not resultado.request_state:
-        raise RuntimeError(f"input_required inesperado: {len(pedidos)} pedidos")
+        raise RuntimeError(f"unexpected input_required: {len(pedidos)} requests")
     chave, pedido = next(iter(pedidos.items()))
     if not isinstance(pedido, types.ElicitRequest) or not isinstance(pedido.params, types.ElicitRequestFormParams):
-        raise RuntimeError("input_required sem elicitation em form mode")
+        raise RuntimeError("input_required without a form-mode elicitation")
     campos = (pedido.params.requested_schema or {}).get("properties") or {}
     if len(campos) != 1:
-        raise RuntimeError("a elicitation nao e um schema plano de um campo")
+        raise RuntimeError("the elicitation is not a flat one-field schema")
     nome, campo = next(iter(campos.items()))
     opcoes = list(campo.get("enum") or ([campo["const"]] if "const" in campo else []))
     return Pergunta(chave=chave, campo=nome, opcoes=opcoes, request_state=resultado.request_state)
