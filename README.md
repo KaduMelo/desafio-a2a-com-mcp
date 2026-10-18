@@ -122,7 +122,7 @@ The trace-id from the A2A client's `traceparent` header is propagated in `_meta.
 Last run, from a clean clone of the fork (`git clone` followed only by the commands in [How to run](#how-to-run-como-rodar)), with both processes freshly started:
 
 ```
-trace-id desta execucao: 4f0ca2752827b37e2e79d3b83d2af0cf
+trace-id desta execucao: a4e4ce5f1ed683a7605e64a4beb34ee5
 procure esse valor no stderr do servidor MCP para conferir a propagacao do traceparent.
 
 PASS 01 tools/list traz as tres tools
