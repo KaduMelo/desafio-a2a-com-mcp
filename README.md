@@ -9,11 +9,11 @@ Submission for the "A Ponte" ("The Bridge") challenge (Hill Valley Tech, five me
 
 Stack: Python 3.12 with [uv](https://docs.astral.sh/uv/), the official `mcp==2.3.0` SDK (v2, aligned with revision 2026-07-28), `starlette==1.8.0` and `uvicorn==0.54.0`. Versions are pinned in each `pyproject.toml` and in the committed `uv.lock` files. The agent uses no LLM and decides by rule.
 
-The manual test walkthrough, step by step and with the expected output, is in [TESTES-MANUAIS.md](TESTES-MANUAIS.md), using the helpers in [test-helpers.sh](test-helpers.sh).
+The manual test walkthrough, step by step and with the expected output, is in [MANUAL-TESTS.md](MANUAL-TESTS.md), using the helpers in [test-helpers.sh](test-helpers.sh).
 
 Everything in the repository is in English except what the challenge contract fixes and the validator checks, which stays in Portuguese: the folder structure (`servidor-mcp/`, `agente/`, `dados/`, `validador/`, `exemplos/`), the tool, argument, output field and skill names (`reservar_sala`, `sala`, `inicio`, `reservado`, `reservar-sala`), the request formats (`reservar sala=...`, `escolha=...`), the `alternativas: ...` line, the tool error messages (`Sala inexistente: ...`) and the starter's data and validator, which must not be changed.
 
-## How to run (Como rodar)
+## How to run
 
 Prerequisites: `git`, `python3` (3.10 or later, for the validator) and `uv` (install with `curl -LsSf https://astral.sh/uv/install.sh | sh`). `uv` downloads the projects' Python 3.12 if it is not installed.
 
@@ -67,7 +67,7 @@ Optional environment variables, with the defaults required by the challenge:
 | `AGENT_URL` | `http://127.0.0.1:7300` | public URL published in the Agent Card |
 | `MCP_URL` | `http://127.0.0.1:7301/mcp` | MCP server the agent consumes |
 
-## Where the bridge happens (Onde a ponte acontece)
+## Where the bridge happens
 
 The whole bridge lives in [agente/agent.py](agente/agent.py), at two points marked with a `BRIDGE` comment.
 
@@ -77,7 +77,7 @@ The whole bridge lives in [agente/agent.py](agente/agent.py), at two points mark
 
 On the server side, the bridge's counterpart is the `room_choice` resolver ([servidor-mcp/server.py:208](servidor-mcp/server.py#L208)), bound to the `choice` parameter of `reservar_sala` through `Annotated[..., Resolve(room_choice)]`. When the room is taken, it returns an `Elicit` with the schema `{sala: enum[alternatives]}`. From there the SDK does the rest: it answers `resultType: input_required`, seals the `requestState`, rejects with -32021 any client without `elicitation.form` and, on the retry, verifies the state and injects the answer. There is no back channel and no open call waiting for the user.
 
-## Technical decisions (Decisões técnicas)
+## Technical decisions
 
 **`requestState` protection.** I use the SDK's own utility, `RequestStateSecurity(keys=[REQUEST_STATE_SECRET], ttl=600)` ([servidor-mcp/server.py:188](servidor-mcp/server.py#L188)), which `MCPServer` installs as boundary middleware. It works like this:
 
@@ -117,9 +117,9 @@ The trace-id from the A2A client's `traceparent` header is propagated in `_meta.
 - **Unknown tool.** The SDK's `MCPServer` rejects the call with `isError: true` (`Unknown tool: ...`) instead of -32602, a form the challenge accepts.
 - **`inputRequests` key.** The SDK derives the key from the resolver's `module:qualname`. Since the server runs as a script, it becomes `__main__:room_choice`. The key is server-assigned and the challenge does not fix its text, so it differs from the `__main__:escolha_de_sala` captured in `exemplos/wire/03`.
 
-## Validator output (Saída do validador)
+## Validator output
 
-Last run, from a clean clone of the fork (`git clone` followed only by the commands in [How to run](#how-to-run-como-rodar)), with both processes freshly started:
+Last run, from a clean clone of the fork (`git clone` followed only by the commands in [How to run](#how-to-run)), with both processes freshly started:
 
 ```
 trace-id desta execucao: a4e4ce5f1ed683a7605e64a4beb34ee5

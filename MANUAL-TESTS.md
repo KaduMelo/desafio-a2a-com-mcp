@@ -424,4 +424,4 @@ for t in $TA $TB $T; do a2a_get $t; done | grep -c '"v1\.'
 python3 validador/validar.py --agente http://localhost:7300 --mcp http://localhost:7301; echo "exit=$?"
 ```
 
-Expected: `resumo: 36 passaram, 0 falharam, de 36 verificacoes` and `exit=0`. The full output of the last run is in the [README](README.md#validator-output-saída-do-validador). Then look in terminal 1 for the trace-id the validator printed on its first line: it appears in the `traceparent` of the `tools/list`, `resources/read` and `tools/call` requests issued by the agent.
+Expected: `resumo: 36 passaram, 0 falharam, de 36 verificacoes` and `exit=0`. The full output of the last run is in the [README](README.md#validator-output). Then look in terminal 1 for the trace-id the validator printed on its first line: it appears in the `traceparent` of the `tools/list`, `resources/read` and `tools/call` requests issued by the agent.
