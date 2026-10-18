@@ -12,7 +12,7 @@ A walkthrough to reproduce each milestone of the submission with `curl`. JSON pr
 
 The trace-id used in the examples is the one from `exemplos/wire`: `4bf92f3577b34da6a3ce929d0e0e4736`. Task, context and message ids and the requestStates change on every run; everything else should come out the same.
 
-The servers' messages and the A2A texts (`alternativas: ...`, `escolha=...`, `Sala inexistente: ...`) stay in Portuguese, because the challenge fixes them byte for byte.
+A few strings stay in Portuguese because the challenge fixes them byte for byte and the validator checks them: tool, field and skill names (`reservar_sala`, `sala`, `reservar-sala`), the request formats (`reservar sala=...`, `escolha=...`), the `alternativas: ...` line, the policy text and the tool error messages (`Sala inexistente: ...`).
 
 ## 0. Setup
 
@@ -55,10 +55,10 @@ Run `mcp_post "$(corpo 01-tools-list.json)"` without the filter to see the `inpu
 **1.2 `listar_salas`: structuredContent plus the same JSON as text**
 
 ```bash
-mcp_post "$(corpo 02-tools-call-livre.json params.name=listar_salas params.arguments={})" | python3 -c 'import json,sys; r=json.loads(sys.stdin.read().split("\nHTTP ")[0])["result"]; print("salas:", len(r["structuredContent"]["salas"]), "| texto == structuredContent:", json.loads(r["content"][0]["text"]) == r["structuredContent"])'
+mcp_post "$(corpo 02-tools-call-livre.json params.name=listar_salas params.arguments={})" | python3 -c 'import json,sys; r=json.loads(sys.stdin.read().split("\nHTTP ")[0])["result"]; print("rooms:", len(r["structuredContent"]["salas"]), "| text == structuredContent:", json.loads(r["content"][0]["text"]) == r["structuredContent"])'
 ```
 ```
-salas: 5 | texto == structuredContent: True
+rooms: 5 | text == structuredContent: True
 ```
 
 **1.3 The `politica://uso` resource**
@@ -173,7 +173,7 @@ ACEITE="params.inputResponses={\"$CHAVE\":{\"action\":\"accept\",\"content\":{\"
 ```
 ```
 input_required
-{"__main__:escolha_de_sala": {"method": "elicitation/create", "params": {"message": "A sala pedida esta ocupada nesse intervalo. Escolha uma alternativa.", "mode": "form", "requestedSchema": {"properties": {"sala": {"description": "Sala alternativa escolhida", "enum": ["sala-fusca", "sala-mirante"], "title": "Sala", "type": "string"}}, "required": ["sala"], "type": "object"}}}}
+{"__main__:escolha_de_sala": {"method": "elicitation/create", "params": {"message": "The requested room is taken in this interval. Choose an alternative.", "mode": "form", "requestedSchema": {"properties": {"sala": {"description": "Chosen alternative room", "enum": ["sala-fusca", "sala-mirante"], "title": "Room", "type": "string"}}, "required": ["sala"], "type": "object"}}}}
 v1.U8D7eN_S7WOlgItV7u-7e...
 ```
 The enum lists the free rooms with capacity ≥ 12, ordered by capacity and then id, at most three.
@@ -232,7 +232,7 @@ mcp_post "$(corpo 11-tools-call-retry-recusa.json params.requestState=$(pegar re
 ```
 ```
 input_required
-{"reserva": null, "reservado": false, "sala": null, "inicio": null, "fim": null, "responsavel": null, "politica": null, "motivo": "recusado"}
+{"reserva": null, "reservado": false, "sala": null, "inicio": null, "fim": null, "responsavel": null, "politica": null, "motivo": "declined"}
 ```
 
 **3.8 Conflict with no possible alternative: `isError`, no elicitation**
@@ -260,9 +260,9 @@ P() { echo "reservar sala=$1 inicio=2026-11-03T$2:00-03:00 fim=2026-11-03T$3:00-
 a2a_enviar "$(P sala-porao 09:00 10:00 Doc)" | resumo_task
 ```
 ```
-task     : task-d495471baa28 | contexto: ctx-827aad500bec
-estado   : TASK_STATE_COMPLETED
-mensagem : Reserva res-0003 confirmada na sala-porao.
+task     : task-d495471baa28 | context: ctx-827aad500bec
+state    : TASK_STATE_COMPLETED
+message  : Booking res-0003 confirmed in sala-porao.
 artifact : reserva {"reserva": "res-0003", "sala": "sala-porao", "inicio": "2026-11-03T09:00:00-03:00", "fim": "2026-11-03T10:00:00-03:00", "responsavel": "Doc", "politica": "2026-11-01"}
 ```
 
@@ -311,19 +311,19 @@ a2a_get task-nao-existe | resumo_task
 ```
 ```
 Central de Salas | [{"url": "http://127.0.0.1:7300/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}] | ['reservar-sala']
-task     : task-10f02f0c13a9 | contexto: ctx-bf1b7cf46304
-estado   : TASK_STATE_COMPLETED
-mensagem : Reserva res-0004 confirmada na sala-aquario.
+task     : task-10f02f0c13a9 | context: ctx-bf1b7cf46304
+state    : TASK_STATE_COMPLETED
+message  : Booking res-0004 confirmed in sala-aquario.
 artifact : reserva {"reserva": "res-0004", "sala": "sala-aquario", "inicio": "2026-11-03T10:00:00-03:00", "fim": "2026-11-03T11:00:00-03:00", "responsavel": "Doc", "politica": "2026-11-01"}
 task-10f02f0c13a9 ctx-bf1b7cf46304 TASK_STATE_COMPLETED ['ROLE_USER', 'ROLE_AGENT'] ['reserva']
-ERRO {"code": -32004, "message": "A Task task-10f02f0c13a9 ja terminou em TASK_STATE_COMPLETED"}
-task     : task-5fe9aeab9c5a | contexto: ctx-2ec71d6b446a
-estado   : TASK_STATE_FAILED
-mensagem : Error executing tool reservar_sala: Sala inexistente: sala-inexistente
-task     : task-911be093d9dc | contexto: ctx-66a3ed126025
-estado   : TASK_STATE_REJECTED
-mensagem : Pedido fora do formato. Use: reservar sala=<id> inicio=<iso8601> fim=<iso8601> responsavel=<nome>
-ERRO {"code": -32001, "message": "Task nao encontrada: task-nao-existe"}
+ERROR {"code": -32004, "message": "Task task-10f02f0c13a9 already ended in TASK_STATE_COMPLETED"}
+task     : task-5fe9aeab9c5a | context: ctx-2ec71d6b446a
+state    : TASK_STATE_FAILED
+message  : Error executing tool reservar_sala: Sala inexistente: sala-inexistente
+task     : task-911be093d9dc | context: ctx-66a3ed126025
+state    : TASK_STATE_REJECTED
+message  : Request does not match the expected format. Use: reservar sala=<id> inicio=<iso8601> fim=<iso8601> responsavel=<nome>
+ERROR {"code": -32001, "message": "Task not found: task-nao-existe"}
 ```
 To compare the whole card against `exemplos/wire/07-a2a-agent-card.json`: `curl -s $AGENTE/.well-known/agent-card.json | python3 -m json.tool`.
 
@@ -347,18 +347,18 @@ a2a_enviar "escolha=sala-aquario" $T | resumo_task
 a2a_enviar "escolha=sala-mirante" $T | resumo_task
 ```
 ```
-task     : task-7e9ea07d0c92 | contexto: ctx-40e1634c9057
-estado   : TASK_STATE_INPUT_REQUIRED
-mensagem : alternativas: sala-fusca, sala-mirante
-task     : task-7e9ea07d0c92 | contexto: ctx-40e1634c9057
-estado   : TASK_STATE_INPUT_REQUIRED
-mensagem : alternativas: sala-fusca, sala-mirante
-task     : task-7e9ea07d0c92 | contexto: ctx-40e1634c9057
-estado   : TASK_STATE_INPUT_REQUIRED
-mensagem : alternativas: sala-fusca, sala-mirante
-task     : task-7e9ea07d0c92 | contexto: ctx-40e1634c9057
-estado   : TASK_STATE_COMPLETED
-mensagem : Reserva res-0005 confirmada na sala-mirante.
+task     : task-7e9ea07d0c92 | context: ctx-40e1634c9057
+state    : TASK_STATE_INPUT_REQUIRED
+message  : alternativas: sala-fusca, sala-mirante
+task     : task-7e9ea07d0c92 | context: ctx-40e1634c9057
+state    : TASK_STATE_INPUT_REQUIRED
+message  : alternativas: sala-fusca, sala-mirante
+task     : task-7e9ea07d0c92 | context: ctx-40e1634c9057
+state    : TASK_STATE_INPUT_REQUIRED
+message  : alternativas: sala-fusca, sala-mirante
+task     : task-7e9ea07d0c92 | context: ctx-40e1634c9057
+state    : TASK_STATE_COMPLETED
+message  : Booking res-0005 confirmed in sala-mirante.
 artifact : reserva {"reserva": "res-0005", "sala": "sala-mirante", "inicio": "2026-11-03T14:00:00-03:00", "fim": "2026-11-03T15:00:00-03:00", "responsavel": "Marty", "politica": "2026-11-01"}
 ```
 
@@ -375,12 +375,12 @@ R=$(a2a_post "$(corpo 08-a2a-send-message.json)"); resumo_task <<< "$R"; T=$(peg
 a2a_enviar "escolha=recusar" $T | resumo_task
 ```
 ```
-task     : task-ca43fdfce8a3 | contexto: ctx-fb415795e683
-estado   : TASK_STATE_INPUT_REQUIRED
-mensagem : alternativas: sala-fusca
-task     : task-ca43fdfce8a3 | contexto: ctx-fb415795e683
-estado   : TASK_STATE_CANCELED
-mensagem : Reserva nao realizada: recusado.
+task     : task-ca43fdfce8a3 | context: ctx-fb415795e683
+state    : TASK_STATE_INPUT_REQUIRED
+message  : alternativas: sala-fusca
+task     : task-ca43fdfce8a3 | context: ctx-fb415795e683
+state    : TASK_STATE_CANCELED
+message  : Booking not made: declined.
 ```
 
 ```bash
@@ -395,13 +395,13 @@ a2a_enviar "escolha=sala-garagem" $TA | resumo_task
 ```
 task-d607260a659a TASK_STATE_INPUT_REQUIRED alternativas: sala-garagem, sala-mirante
 task-04cadac2cdc8 TASK_STATE_INPUT_REQUIRED alternativas: sala-fusca
-task     : task-04cadac2cdc8 | contexto: ctx-07a5e0ce6567
-estado   : TASK_STATE_COMPLETED
-mensagem : Reserva res-0006 confirmada na sala-fusca.
+task     : task-04cadac2cdc8 | context: ctx-07a5e0ce6567
+state    : TASK_STATE_COMPLETED
+message  : Booking res-0006 confirmed in sala-fusca.
 artifact : reserva {"reserva": "res-0006", "sala": "sala-fusca", "inicio": "2026-11-03T14:00:00-03:00", "fim": "2026-11-03T15:00:00-03:00", "responsavel": "George", "politica": "2026-11-01"}
-task     : task-d607260a659a | contexto: ctx-ed8f5275f562
-estado   : TASK_STATE_COMPLETED
-mensagem : Reserva res-0007 confirmada na sala-garagem.
+task     : task-d607260a659a | context: ctx-ed8f5275f562
+state    : TASK_STATE_COMPLETED
+message  : Booking res-0007 confirmed in sala-garagem.
 artifact : reserva {"reserva": "res-0007", "sala": "sala-garagem", "inicio": "2026-11-03T16:00:00-03:00", "fim": "2026-11-03T17:00:00-03:00", "responsavel": "Lorraine", "politica": "2026-11-01"}
 ```
 Each Task completed with its own interval and its own requester: the `requestState`s did not get mixed up.

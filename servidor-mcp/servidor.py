@@ -56,7 +56,7 @@ def _instante(valor: str) -> datetime:
     try:
         instante = datetime.fromisoformat(valor)
     except ValueError:
-        raise ToolError(f"Data invalida: {valor}") from None
+        raise ToolError(f"Invalid date: {valor}") from None
     if instante.tzinfo is None:
         instante = instante.replace(tzinfo=SAO_PAULO)
     return instante.astimezone(SAO_PAULO)
@@ -161,7 +161,7 @@ def schema_da_escolha(opcoes: list[str]) -> type[EscolhaDeSala]:
     return create_model(
         "EscolhaDeSala",
         __base__=EscolhaDeSala,
-        sala=(Literal[tuple(opcoes)], Field(title="Sala", description="Sala alternativa escolhida")),
+        sala=(Literal[tuple(opcoes)], Field(title="Room", description="Chosen alternative room")),
     )
 
 
@@ -185,12 +185,12 @@ mcp = MCPServer(
 )
 
 
-@mcp.tool(description="Lista todas as salas com capacidade e recursos.")
+@mcp.tool(description="Lists all rooms with their capacity and equipment.")
 def listar_salas() -> ListaDeSalas:
     return ListaDeSalas(salas=[SalaOut(**s) for s in SALAS])
 
 
-@mcp.tool(description="Diz se uma sala esta livre no intervalo, e quais reservas conflitam.")
+@mcp.tool(description="Tells whether a room is free in the interval, and which bookings conflict.")
 def consultar_disponibilidade(sala: str, inicio: str, fim: str) -> Disponibilidade:
     ini, fi = validar_pedido(sala, inicio, fim)
     em_conflito = [ConflitoOut(**{k: r[k] for k in ("id", "inicio", "fim", "responsavel")}) for r in conflitos(sala, ini, fi)]
@@ -209,10 +209,10 @@ def escolha_de_sala(sala: str, inicio: str, fim: str) -> Elicit[EscolhaDeSala] |
     opcoes = alternativas(sala, ini, fi)
     if not opcoes:
         raise ToolError(ERRO_SEM_ALTERNATIVA)
-    return Elicit("A sala pedida esta ocupada nesse intervalo. Escolha uma alternativa.", schema_da_escolha(opcoes))
+    return Elicit("The requested room is taken in this interval. Choose an alternative.", schema_da_escolha(opcoes))
 
 
-@mcp.tool(description="Reserva uma sala. Se o intervalo estiver ocupado, pergunta qual alternativa usar.")
+@mcp.tool(description="Books a room. If the interval is taken, asks which alternative to use.")
 def reservar_sala(
     sala: str,
     inicio: str,
@@ -221,7 +221,7 @@ def reservar_sala(
     escolha: Annotated[ElicitationResult[EscolhaDeSala], Resolve(escolha_de_sala)],
 ) -> ReservaOut:
     if not isinstance(escolha, AcceptedElicitation):
-        motivo = "recusado" if escolha.action == "decline" else "cancelado"
+        motivo = "declined" if escolha.action == "decline" else "canceled"
         return ReservaOut(reservado=False, motivo=motivo)
     destino = escolha.data.sala if escolha.data is not None else sala
     ini, fi = validar_pedido(destino, inicio, fim)
@@ -238,8 +238,8 @@ def reservar_sala(
     )
 
 
-@mcp.resource("politica://uso", name="politica-de-uso", mime_type="text/markdown",
-              description="Politica de uso das salas de reuniao.")
+@mcp.resource("politica://uso", name="usage-policy", mime_type="text/markdown",
+              description="Meeting room usage policy.")
 def politica_de_uso() -> str:
     return TEXTO_POLITICA
 

@@ -53,7 +53,7 @@ UNSUPPORTED_OPERATION = -32004
 
 AGENT_CARD = {
     "name": "Central de Salas",
-    "description": "Reserva salas de reuniao da Hill Valley Tech.",
+    "description": "Books Hill Valley Tech meeting rooms.",
     "provider": {"organization": "Hill Valley Tech", "url": "https://hillvalley.example"},
     "version": "1.0.0",
     "supportedInterfaces": [{"url": f"{URL_PUBLICA}/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
@@ -63,9 +63,9 @@ AGENT_CARD = {
     "skills": [
         {
             "id": "reservar-sala",
-            "name": "Reservar sala",
-            "description": "Reserva uma sala em um intervalo. Se houver conflito, pergunta qual alternativa usar.",
-            "tags": ["salas", "agenda"],
+            "name": "Book a room",
+            "description": "Books a room for an interval. If there is a conflict, asks which alternative to use.",
+            "tags": ["rooms", "calendar"],
             "inputModes": ["text/plain"],
             "outputModes": ["text/plain"],
             "examples": [
@@ -194,11 +194,11 @@ async def concluir_com(task: Task, resultado: types.CallToolResult | types.Input
 
     task.pausa = None
     if resultado.is_error:
-        task.transitar(FAILED, texto_de(resultado) or "a tool devolveu erro")
+        task.transitar(FAILED, texto_de(resultado) or "the tool returned an error")
         return
     dados = resultado.structured_content or {}
     if dados.get("reservado") is False:
-        task.transitar(CANCELED, f"Reserva nao realizada: {dados.get('motivo') or 'recusada'}.")
+        task.transitar(CANCELED, f"Booking not made: {dados.get('motivo') or 'declined'}.")
         return
     reserva = {
         "reserva": dados.get("reserva"),
@@ -211,27 +211,27 @@ async def concluir_com(task: Task, resultado: types.CallToolResult | types.Input
     task.artifacts.append(
         {"artifactId": f"art-{secrets.token_hex(6)}", "name": "reserva", "parts": [{"text": json.dumps(reserva)}]}
     )
-    task.transitar(COMPLETED, f"Reserva {reserva['reserva']} confirmada na {reserva['sala']}.")
+    task.transitar(COMPLETED, f"Booking {reserva['reserva']} confirmed in {reserva['sala']}.")
 
 
 async def iniciar(task: Task, texto: str) -> None:
     pedido = ler_pedido(texto)
     if pedido is None:
-        task.transitar(REJECTED, f"Pedido fora do formato. Use: {FORMATO_PEDIDO}")
+        task.transitar(REJECTED, f"Request does not match the expected format. Use: {FORMATO_PEDIDO}")
         return
     task.transitar(WORKING)
     trace = (task.trace_id, task.trace_flags)
     tools = await host.listar_tools(trace)
     tool = tools.get(TOOL_RESERVA)
     if tool is None:
-        task.transitar(FAILED, f"O servidor MCP nao oferece a tool {TOOL_RESERVA}")
+        task.transitar(FAILED, f"The MCP server does not offer the {TOOL_RESERVA} tool")
         return
     task.politica = await host.versao_da_politica(trace)
     # Arguments come from the discovered inputSchema, not from a hardcoded list.
     esperados = list((tool.input_schema or {}).get("properties", {}))
     faltando = [nome for nome in (tool.input_schema or {}).get("required", []) if nome not in pedido]
     if faltando:
-        task.transitar(REJECTED, f"Pedido sem {', '.join(faltando)}. Use: {FORMATO_PEDIDO}")
+        task.transitar(REJECTED, f"Request is missing {', '.join(faltando)}. Use: {FORMATO_PEDIDO}")
         return
     argumentos = {nome: pedido[nome] for nome in esperados if nome in pedido}
     resultado = await host.chamar(TOOL_RESERVA, argumentos, trace)
@@ -268,12 +268,12 @@ async def processar(task: Task, fazer) -> None:
         await fazer
     except MCPError as erro:
         task.pausa = None
-        task.transitar(FAILED, f"Erro do servidor MCP ({erro.error.code}): {erro.error.message}")
+        task.transitar(FAILED, f"MCP server error ({erro.error.code}): {erro.error.message}")
     except Exception as erro:  # the A2A client always gets a consistent Task
         log(f"[a2a] task={task.id} unexpected error: {erro!r}")
         task.pausa = None
         if task.estado not in TERMINAIS:
-            task.transitar(FAILED, f"Erro interno do agente: {erro}")
+            task.transitar(FAILED, f"Agent internal error: {erro}")
 
 
 # --- JSON-RPC --------------------------------------------------------------------
@@ -282,7 +282,7 @@ async def processar(task: Task, fazer) -> None:
 async def send_message(params: dict[str, Any], traceparent: str | None) -> dict[str, Any]:
     mensagem = params.get("message")
     if not isinstance(mensagem, dict) or not isinstance(mensagem.get("parts"), list):
-        raise ErroRPC(-32602, "params.message com parts e obrigatorio")
+        raise ErroRPC(-32602, "params.message with parts is required")
     texto = texto_da_mensagem(mensagem)
     trace = trace_do_header(traceparent)
     task_id = mensagem.get("taskId")
@@ -290,12 +290,12 @@ async def send_message(params: dict[str, Any], traceparent: str | None) -> dict[
     if task_id:
         task = TASKS.get(task_id)
         if task is None:
-            raise ErroRPC(TASK_NOT_FOUND, f"Task nao encontrada: {task_id}")
+            raise ErroRPC(TASK_NOT_FOUND, f"Task not found: {task_id}")
         async with task.trava:
             if task.estado in TERMINAIS:
-                raise ErroRPC(UNSUPPORTED_OPERATION, f"A Task {task_id} ja terminou em {task.estado}")
+                raise ErroRPC(UNSUPPORTED_OPERATION, f"Task {task_id} already ended in {task.estado}")
             if task.estado != INPUT_REQUIRED or task.pausa is None:
-                raise ErroRPC(UNSUPPORTED_OPERATION, f"A Task {task_id} nao esta esperando input")
+                raise ErroRPC(UNSUPPORTED_OPERATION, f"Task {task_id} is not waiting for input")
             if trace:
                 task.trace_id, task.trace_flags = trace
             task.historico.append(mensagem)
@@ -318,7 +318,7 @@ async def send_message(params: dict[str, Any], traceparent: str | None) -> dict[
 async def get_task(params: dict[str, Any], _traceparent: str | None) -> dict[str, Any]:
     task = TASKS.get(str(params.get("id", "")))
     if task is None:
-        raise ErroRPC(TASK_NOT_FOUND, f"Task nao encontrada: {params.get('id')}")
+        raise ErroRPC(TASK_NOT_FOUND, f"Task not found: {params.get('id')}")
     return {"task": task.para_json()}
 
 
@@ -338,16 +338,16 @@ async def endpoint_a2a(request: Request) -> JSONResponse:
     try:
         corpo = json.loads(await request.body())
     except ValueError:
-        return resposta_rpc(None, erro=(-32700, "JSON invalido"))
+        return resposta_rpc(None, erro=(-32700, "Invalid JSON"))
     if not isinstance(corpo, dict) or corpo.get("jsonrpc") != "2.0" or not isinstance(corpo.get("method"), str):
-        return resposta_rpc(corpo.get("id") if isinstance(corpo, dict) else None, erro=(-32600, "Request invalido"))
+        return resposta_rpc(corpo.get("id") if isinstance(corpo, dict) else None, erro=(-32600, "Invalid request"))
     id_, metodo = corpo.get("id"), corpo["method"]
     params = corpo.get("params") if isinstance(corpo.get("params"), dict) else {}
     traceparent = request.headers.get("traceparent")
     log(f"[a2a] method={metodo} id={id_} traceparent={traceparent or '-'}")
     tratador = METODOS.get(metodo)
     if tratador is None:
-        return resposta_rpc(id_, erro=(-32601, f"Metodo nao suportado: {metodo}"))
+        return resposta_rpc(id_, erro=(-32601, f"Unsupported method: {metodo}"))
     try:
         return resposta_rpc(id_, resultado=await tratador(params, traceparent))
     except ErroRPC as erro:

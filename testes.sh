@@ -80,12 +80,12 @@ print(d if isinstance(d,str) else json.dumps(d, ensure_ascii=False))' "$1"
 resumo_task() {
   python3 -c 'import json,sys
 r=json.load(sys.stdin)
-if "error" in r: print("ERRO", json.dumps(r["error"], ensure_ascii=False)); sys.exit()
+if "error" in r: print("ERROR", json.dumps(r["error"], ensure_ascii=False)); sys.exit()
 t=r["result"].get("task", r["result"])
 msg=" ".join(p.get("text","") for p in (t["status"].get("message") or {}).get("parts",[]))
-print("task     :", t["id"], "| contexto:", t["contextId"])
-print("estado   :", t["status"]["state"])
-print("mensagem :", msg)
+print("task     :", t["id"], "| context:", t["contextId"])
+print("state    :", t["status"]["state"])
+print("message  :", msg)
 for a in t.get("artifacts") or []:
     print("artifact :", a["name"], " ".join(p.get("text","") for p in a["parts"]))'
 }
